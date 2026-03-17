@@ -36,6 +36,11 @@
                 
                 <!-- Search & Folder Bar -->
                 <div class="p-4 border-b border-gray-200">
+                    <!-- Compose Button -->
+                    <button @click="openCompose('compose')"
+                            class="w-full mb-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold rounded-lg transition flex items-center justify-center gap-2">
+                        ✉ Compose
+                    </button>
                     <input x-model="searchQuery" 
                            @input="search($event.target.value)"
                            type="text" 
@@ -245,6 +250,7 @@
                             <p class="text-xs text-gray-600 mt-1" x-text="selectedEmail?.from"></p>
                             <div class="flex gap-2 mt-3">
                                 <button @click="openCompose('reply')" class="flex-1 py-1 bg-blue-500 text-white text-xs rounded">Reply</button>
+                                <button @click="openCompose('forward')" class="flex-1 py-1 bg-blue-400 text-white text-xs rounded">Fwd</button>
                                 <button @click="archive()" class="flex-1 py-1 bg-gray-300 text-xs rounded">Archive</button>
                                 <button @click="trainingModalOpen = true" class="flex-1 py-1 bg-green-500 text-white text-xs rounded">Train</button>
                             </div>
@@ -497,6 +503,100 @@
             </div>
         </div>
         
+        <!-- ============= COMPOSE MODAL ============= -->
+        <div x-show="composeOpen"
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100"
+             x-transition:leave="transition ease-in duration-150"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0"
+             class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+            <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+
+                <!-- Modal Header -->
+                <div class="p-4 border-b border-gray-200 flex justify-between items-center flex-shrink-0">
+                    <h2 class="text-xl font-bold"
+                        x-text="composeType === 'reply' ? '↩ Reply' : composeType === 'forward' ? '→ Forward' : '✉ New Email'">
+                    </h2>
+                    <button @click="discardCompose()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">✕</button>
+                </div>
+
+                <!-- Modal Body -->
+                <div class="flex-1 overflow-y-auto p-6 space-y-4">
+
+                    <!-- To -->
+                    <div>
+                        <label class="block text-sm font-semibold mb-1">To <span class="text-red-500">*</span></label>
+                        <input x-model="composeData.to"
+                               type="email"
+                               placeholder="recipient@example.com"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               :disabled="composeSending">
+                    </div>
+
+                    <!-- Cc -->
+                    <div>
+                        <label class="block text-sm font-semibold mb-1">Cc</label>
+                        <input x-model="composeData.cc"
+                               type="text"
+                               placeholder="cc@example.com (optional)"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               :disabled="composeSending">
+                    </div>
+
+                    <!-- Subject -->
+                    <div>
+                        <label class="block text-sm font-semibold mb-1">Subject <span class="text-red-500">*</span></label>
+                        <input x-model="composeData.subject"
+                               type="text"
+                               placeholder="Subject"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               :disabled="composeSending">
+                    </div>
+
+                    <!-- Body -->
+                    <div>
+                        <label class="block text-sm font-semibold mb-1">Message <span class="text-red-500">*</span></label>
+                        <textarea x-model="composeData.body"
+                                  rows="10"
+                                  :placeholder="composeType === 'forward'
+                                    ? 'Add a note (optional) — original message will be appended below...'
+                                    : 'Write your message here (plaintext)...'"
+                                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+                                  :disabled="composeSending"></textarea>
+                        <!-- Forward preview hint -->
+                        <p x-show="composeType === 'forward' && selectedEmail"
+                           class="text-xs text-gray-400 mt-1">
+                            ↓ Original from <span x-text="selectedEmail?.from" class="font-medium"></span> will be appended automatically.
+                        </p>
+                    </div>
+
+                    <!-- Error -->
+                    <div x-show="composeError" class="text-sm text-red-500 bg-red-50 p-3 rounded-lg" x-text="composeError"></div>
+                </div>
+
+                <!-- Modal Footer -->
+                <div class="p-4 border-t border-gray-200 flex gap-3 justify-between flex-shrink-0">
+                    <button @click="discardCompose()"
+                            :disabled="composeSending"
+                            class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition disabled:opacity-50">
+                        Discard
+                    </button>
+
+                    <button @click="sendCompose()"
+                            :disabled="composeSending || !composeData.to.trim() || !composeData.subject.trim() || (composeType !== 'forward' && !composeData.body.trim())"
+                            :class="(composeSending || !composeData.to.trim() || !composeData.subject.trim() || (composeType !== 'forward' && !composeData.body.trim()))
+                                     ? 'bg-gray-300 cursor-not-allowed'
+                                     : 'bg-blue-500 hover:bg-blue-600'"
+                            class="px-6 py-2 text-white rounded-lg font-semibold transition flex items-center gap-2">
+                        <span x-show="composeSending" class="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                        <span x-text="composeSending ? 'Sending...' : 'Send'"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- ============= TOAST NOTIFICATIONS ============= -->
         <div x-show="toast.visible" 
              class="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 bg-green-500 text-white p-3 rounded-lg shadow-lg flex justify-between items-center">
@@ -546,6 +646,10 @@
                     exceptionAction: 'ticket'
                 },
                 composeOpen: false,
+                composeType: 'compose',   // 'compose' | 'reply' | 'forward'
+                composeData: { to: '', cc: '', subject: '', body: '' },
+                composeSending: false,
+                composeError: null,
                 mobileView: 'list',
                 toast: { visible: false, message: '' },
                 
@@ -690,11 +794,138 @@
                     }
                 },
                 
-                // Open compose (reply/forward)
+                // Open compose modal
                 openCompose(type) {
+                    this.composeType = type;
+                    this.composeError = null;
+                    this.composeData = { to: '', cc: '', subject: '', body: '' };
+
+                    if (type === 'reply' && this.selectedEmail) {
+                        this.populateReplyFields();
+                    } else if (type === 'forward' && this.selectedEmail) {
+                        this.populateForwardFields();
+                    }
+
                     this.composeOpen = true;
-                    // TODO: Implement compose modal (Day 5)
-                    alert(`${type} compose coming soon...`);
+                },
+
+                // Pre-fill reply fields
+                populateReplyFields() {
+                    const email = this.selectedEmail;
+                    if (!email) return;
+
+                    // To = original sender (strip display name if needed)
+                    this.composeData.to = email.from || '';
+
+                    // Subject: add "Re: " prefix if not already present
+                    const subj = email.subject || '';
+                    this.composeData.subject = subj.toLowerCase().startsWith('re: ')
+                        ? subj
+                        : `Re: ${subj}`;
+
+                    this.composeData.body = '';
+                },
+
+                // Pre-fill forward fields
+                populateForwardFields() {
+                    const email = this.selectedEmail;
+                    if (!email) return;
+
+                    this.composeData.to = '';
+
+                    // Subject: add "Fwd: " prefix if not already present
+                    const subj = email.subject || '';
+                    this.composeData.subject = subj.toLowerCase().startsWith('fwd: ')
+                        ? subj
+                        : `Fwd: ${subj}`;
+
+                    // Body: user types their intro; server appends the original below
+                    this.composeData.body = '';
+                },
+
+                // Discard compose (with confirmation if dirty)
+                discardCompose() {
+                    const hasContent = this.composeData.to || this.composeData.body ||
+                                       (this.composeType === 'compose' && this.composeData.subject);
+                    if (hasContent && !confirm('Discard this message?')) return;
+                    this.composeOpen = false;
+                    this.composeData = { to: '', cc: '', subject: '', body: '' };
+                    this.composeError = null;
+                },
+
+                // Send email (dispatches to correct endpoint based on composeType)
+                async sendCompose() {
+                    if (!this.composeData.to.trim()) {
+                        this.composeError = 'Recipient (To) is required.';
+                        return;
+                    }
+                    if (!this.composeData.subject.trim()) {
+                        this.composeError = 'Subject is required.';
+                        return;
+                    }
+                    if (!this.composeData.body.trim() && this.composeType !== 'forward') {
+                        this.composeError = 'Message body is required.';
+                        return;
+                    }
+
+                    this.composeSending = true;
+                    this.composeError = null;
+
+                    try {
+                        let url, payload;
+
+                        if (this.composeType === 'reply' && this.selectedEmailId) {
+                            url = `/api/gmail/messages/${this.selectedEmailId}/reply`;
+                            payload = {
+                                to: this.composeData.to,
+                                subject: this.composeData.subject,
+                                body_plain: this.composeData.body,
+                                cc: this.composeData.cc || null
+                            };
+                        } else if (this.composeType === 'forward' && this.selectedEmailId) {
+                            url = `/api/gmail/messages/${this.selectedEmailId}/forward`;
+                            payload = {
+                                to: this.composeData.to,
+                                cc: this.composeData.cc || null,
+                                body_plain: this.composeData.body  // user's intro; server appends original
+                            };
+                        } else {
+                            url = '/api/gmail/messages/send';
+                            payload = {
+                                to: this.composeData.to,
+                                cc: this.composeData.cc || null,
+                                subject: this.composeData.subject,
+                                body_plain: this.composeData.body
+                            };
+                        }
+
+                        const res = await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+
+                        if (!res.ok) {
+                            const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+                            throw new Error(err.error || `HTTP ${res.status}`);
+                        }
+
+                        const data = await res.json();
+
+                        // Success: close modal, show toast, return to reader
+                        this.composeOpen = false;
+                        this.composeData = { to: '', cc: '', subject: '', body: '' };
+
+                        const typeLabel = this.composeType === 'reply' ? 'Reply' :
+                                          this.composeType === 'forward' ? 'Forward' : 'Email';
+                        this.toast = { visible: true, message: `${typeLabel} sent! (ID: ${data.message_id})` };
+                        setTimeout(() => this.toast.visible = false, 4000);
+
+                    } catch (e) {
+                        this.composeError = `Failed to send: ${e.message}`;
+                    } finally {
+                        this.composeSending = false;
+                    }
                 },
                 
                 // Keyboard shortcuts
@@ -702,7 +933,11 @@
                     if (e.key === 'j') this.selectNext();
                     if (e.key === 'k') this.selectPrev();
                     if (e.key === 'e') this.archive();
-                    if (e.key === 'Escape') this.chatOpen = false;
+                    if (e.key === 'Escape') {
+                        if (this.composeOpen) this.discardCompose();
+                        else this.chatOpen = false;
+                    }
+                    if (e.key === 'c' && !this.composeOpen) this.openCompose('compose');
                 },
                 
                 selectNext() {

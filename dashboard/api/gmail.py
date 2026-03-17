@@ -481,8 +481,12 @@ def reply_message(message_id):
         
         # Build reply
         message = MIMEText(data.get('body_plain', ''), 'plain')
-        message['to'] = headers.get('from', '')
-        message['subject'] = f"Re: {headers.get('subject', '')}"
+        # Allow caller to override To; default to original sender
+        message['to'] = data.get('to') or headers.get('from', '')
+        # Allow caller to override Subject; default to Re: original
+        original_subject = headers.get('subject', '')
+        default_subject = original_subject if original_subject.lower().startswith('re: ') else f"Re: {original_subject}"
+        message['subject'] = data.get('subject') or default_subject
         message['In-Reply-To'] = headers.get('message-id', '')
         message['References'] = headers.get('references', '') + ' ' + headers.get('message-id', '')
         
@@ -501,6 +505,68 @@ def reply_message(message_id):
     except Exception as e:
         logger.error(f"Error replying to message: {e}")
         return jsonify({'error': str(e)}), 500
+
+@gmail_bp.route('/messages/<message_id>/forward', methods=['POST'])
+def forward_message(message_id):
+    """Forward an email to a new recipient."""
+    try:
+        data = request.get_json()
+        service = get_gmail_service()
+
+        # Get original message
+        original = service.users().messages().get(
+            userId='me',
+            id=message_id,
+            format='full'
+        ).execute()
+
+        # Decode original for body + headers
+        decoded = decode_mime_message(original)
+
+        # Build forwarded body: user's intro text + separator + original
+        user_text = data.get('body_plain', '').strip()
+        original_body = decoded.get('body_plain', '')
+        fwd_header = (
+            "\n\n---------- Forwarded message ----------\n"
+            f"From: {decoded.get('from', '')}\n"
+            f"Date: {decoded.get('date', '')}\n"
+            f"Subject: {decoded.get('subject', '')}\n\n"
+        )
+        full_body = (user_text + fwd_header + original_body).strip()
+
+        # Strip existing "Fwd: " prefix to avoid stacking
+        original_subject = decoded.get('subject', '')
+        if original_subject.lower().startswith('fwd: '):
+            fwd_subject = original_subject
+        else:
+            fwd_subject = f"Fwd: {original_subject}"
+
+        # Build MIME message
+        message = MIMEText(full_body, 'plain')
+        message['to'] = data.get('to', '')
+        if data.get('cc'):
+            message['cc'] = data.get('cc', '')
+        message['subject'] = fwd_subject
+
+        # Send
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        result = service.users().messages().send(
+            userId='me',
+            body={'raw': raw_message}
+        ).execute()
+
+        return jsonify({
+            'message_id': result['id'],
+            'status': 'sent'
+        }), 200
+
+    except HttpError as e:
+        logger.error(f"Gmail API error forwarding message: {e}")
+        return jsonify({'error': str(e)}), 500
+    except Exception as e:
+        logger.error(f"Error forwarding message: {e}")
+        return jsonify({'error': str(e)}), 500
+
 
 @gmail_bp.route('/messages/<message_id>/archive', methods=['POST'])
 def archive_message(message_id):
