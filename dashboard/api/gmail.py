@@ -242,72 +242,70 @@ def get_messages():
     Query params:
         - limit: number of emails to fetch (default: 20)
         - folder: label/folder name (default: INBOX)
+        - pageToken: pagination token from previous response
     
     Returns:
-        JSON list of emails with sender, subject, snippet, date
+        JSON list of emails with id, sender, subject, snippet, date, nextPageToken
     """
     try:
         service = get_gmail_service()
         limit = request.args.get('limit', 20, type=int)
         folder = request.args.get('folder', 'INBOX')
-        
-        # Build query
-        query = f'in:{folder}'
-        
-        # List messages
-        results = service.users().messages().list(
-            userId='me',
-            q=query,
-            maxResults=limit
-        ).execute()
-        
+        page_token = request.args.get('pageToken')
+
+        # Build list request
+        list_kwargs = {
+            'userId': 'me',
+            'labelIds': [folder],
+            'maxResults': limit
+        }
+        if page_token:
+            list_kwargs['pageToken'] = page_token
+
+        results = service.users().messages().list(**list_kwargs).execute()
         messages = results.get('messages', [])
-        
-        # Get message details and cache them
+        next_page_token = results.get('nextPageToken')
+
+        # Fetch metadata for each message (fast — no full body)
         email_list = []
-        watermark = get_watermark()
-        
         for msg in messages:
             msg_id = msg['id']
-            
-            # Skip if already processed (watermark)
-            if watermark and msg_id == watermark:
-                break
-            
-            # Fetch full message
-            msg_data = service.users().messages().get(
-                userId='me',
-                id=msg_id,
-                format='full'
-            ).execute()
-            
-            # Decode
-            decoded = decode_mime_message(msg_data)
-            labels = msg_data.get('labelIds', [])
-            
-            # Cache it
-            cache_email(msg_id, decoded, labels)
-            
-            # Add to response
-            email_list.append({
-                'message_id': msg_id,
-                'from': decoded['from'],
-                'subject': decoded['subject'],
-                'date': decoded['date'],
-                'labels': labels
-            })
-        
-        # Update watermark
-        if email_list:
-            update_watermark(email_list[0]['message_id'])
-        
+            try:
+                msg_data = service.users().messages().get(
+                    userId='me',
+                    id=msg_id,
+                    format='metadata',
+                    metadataHeaders=['From', 'To', 'Subject', 'Date']
+                ).execute()
+
+                headers = {
+                    h['name'].lower(): h['value']
+                    for h in msg_data.get('payload', {}).get('headers', [])
+                }
+
+                email_list.append({
+                    'id': msg_id,
+                    'from': headers.get('from', ''),
+                    'to': headers.get('to', ''),
+                    'subject': headers.get('subject', '(no subject)'),
+                    'date': headers.get('date', ''),
+                    'snippet': msg_data.get('snippet', ''),
+                    'labels': msg_data.get('labelIds', [])
+                })
+            except Exception as inner_e:
+                logger.warning(f"Skipping message {msg_id}: {inner_e}")
+                continue
+
         return jsonify({
             'messages': email_list,
-            'count': len(email_list)
+            'count': len(email_list),
+            'nextPageToken': next_page_token
         }), 200
-        
+
     except HttpError as e:
         logger.error(f"Gmail API error: {e}")
+        if e.resp.status == 401:
+            return jsonify({'error': 'Unauthorized – token expired or revoked'}), 401
         return jsonify({'error': str(e)}), 500
     except Exception as e:
         logger.error(f"Error fetching messages: {e}")

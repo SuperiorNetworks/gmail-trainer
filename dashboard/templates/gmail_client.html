@@ -7,7 +7,12 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>
-        /* Skeleton loader animation */
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .animate-spin {
+            animation: spin 0.8s linear infinite;
+        }
         @keyframes pulse {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.5; }
@@ -15,38 +20,36 @@
         .animate-pulse {
             animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
-        /* Smooth transitions */
-        * {
-            transition-property: grid-template-columns;
-            transition-duration: 300ms;
-        }
+        .chat-messages::-webkit-scrollbar { width: 4px; }
+        .chat-messages::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 2px; }
     </style>
 </head>
 <body class="bg-white text-gray-800">
+
     <!-- Gmail Client Container -->
-    <div x-data="gmailClient()" @keydown.document="handleKeyboard" class="h-screen flex flex-col">
-        
-        <!-- Desktop Three-Panel Layout -->
-        <div class="hidden md:grid flex-1 overflow-hidden" 
-             :class="chatOpen ? 'grid-cols-[20%_40%_40%]' : 'grid-cols-[20%_80%_0%]'"
-             style="grid-template-rows: 1fr;">
-            
-            <!-- ============= EMAIL LIST PANEL (Left, 20%) ============= -->
-            <div class="border-r border-gray-200 flex flex-col bg-white">
-                
-                <!-- Search & Folder Bar -->
-                <div class="p-4 border-b border-gray-200">
-                    <!-- Compose Button -->
+    <div x-data="gmailClient()" @keydown.window="handleKeyboard" class="h-screen flex flex-col">
+
+        <!-- ============= DESKTOP THREE-PANEL LAYOUT ============= -->
+        <div class="hidden md:grid flex-1 overflow-hidden"
+             :style="chatOpen
+                ? 'grid-template-columns: 20% 40% 40%'
+                : 'grid-template-columns: 20% 80% 0%'"
+             style="grid-template-rows: 1fr; transition: grid-template-columns 300ms ease;">
+
+            <!-- ====== EMAIL LIST PANEL (Left 20%) ====== -->
+            <div class="border-r border-gray-200 flex flex-col bg-white overflow-hidden">
+
+                <!-- Search & Controls -->
+                <div class="p-4 border-b border-gray-200 flex-shrink-0">
                     <button @click="openCompose('compose')"
                             class="w-full mb-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold rounded-lg transition flex items-center justify-center gap-2">
                         ✉ Compose
                     </button>
-                    <input x-model="searchQuery" 
-                           @input="search($event.target.value)"
-                           type="text" 
-                           placeholder="Search emails..." 
+                    <input x-model="searchQuery"
+                           type="text"
+                           placeholder="Search emails..."
                            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <select x-model="currentFolder" 
+                    <select x-model="currentFolder"
                             @change="resetList()"
                             class="w-full mt-2 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none">
                         <option value="INBOX">📥 Inbox</option>
@@ -54,20 +57,22 @@
                         <option value="DRAFT">✏️ Draft</option>
                     </select>
                 </div>
-                
+
                 <!-- Email List -->
                 <div class="flex-1 overflow-y-auto">
                     <!-- Loading Skeleton -->
                     <div x-show="loadingList && emailList.length === 0" class="p-4 space-y-4">
                         <template x-for="i in 5" :key="i">
-                            <div class="h-20 bg-gray-200 rounded animate-pulse"></div>
+                            <div class="h-16 bg-gray-200 rounded animate-pulse"></div>
                         </template>
                     </div>
-                    
+
                     <!-- Email Items -->
                     <template x-for="email in filteredEmails" :key="email.id">
                         <div @click="selectEmail(email)"
-                             :class="selectedEmailId === email.id ? 'bg-blue-50 border-l-4 border-blue-500' : 'hover:bg-gray-50'"
+                             :class="selectedEmailId === email.id
+                                 ? 'bg-blue-50 border-l-4 border-blue-500'
+                                 : 'hover:bg-gray-50'"
                              class="p-3 border-b border-gray-200 cursor-pointer transition">
                             <div class="font-semibold text-sm truncate" x-text="email.from"></div>
                             <div class="text-gray-600 text-xs truncate" x-text="email.subject"></div>
@@ -75,16 +80,17 @@
                             <div class="text-gray-400 text-xs mt-1" x-text="formatDate(email.date)"></div>
                         </div>
                     </template>
-                    
-                    <!-- No emails message -->
-                    <div x-show="!loadingList && filteredEmails.length === 0" class="p-4 text-center text-gray-500">
+
+                    <!-- Empty -->
+                    <div x-show="!loadingList && filteredEmails.length === 0"
+                         class="p-4 text-center text-gray-500 text-sm">
                         No emails found
                     </div>
                 </div>
-                
-                <!-- Load More Button -->
-                <div x-show="hasMore" class="p-3 border-t border-gray-200">
-                    <button @click="loadMore()" 
+
+                <!-- Load More -->
+                <div x-show="hasMore" class="p-3 border-t border-gray-200 flex-shrink-0">
+                    <button @click="loadMore()"
                             :disabled="loadingList"
                             :class="loadingList ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'"
                             class="w-full py-2 rounded-lg text-white text-sm font-semibold transition">
@@ -93,111 +99,190 @@
                     </button>
                 </div>
             </div>
-            
-            <!-- ============= EMAIL READER PANEL (Center, 40-80%) ============= -->
+
+            <!-- ====== EMAIL READER PANEL (Center 40–80%) ====== -->
             <div class="bg-white flex flex-col overflow-hidden">
-                
+
                 <!-- Email Header & Actions -->
                 <div class="border-b border-gray-200 p-4 flex-shrink-0">
-                    <div x-show="!selectedEmail" class="text-center text-gray-400">
+                    <div x-show="!selectedEmail" class="text-center text-gray-400 py-2">
                         Select an email to read
                     </div>
-                    
+
                     <div x-show="selectedEmail" class="space-y-3">
-                        <!-- Subject and From -->
                         <div>
                             <h2 class="text-xl font-bold" x-text="selectedEmail?.subject"></h2>
                             <p class="text-sm text-gray-600 mt-1">
                                 <span class="font-semibold" x-text="selectedEmail?.from"></span>
-                                <span class="text-gray-400" x-text="'→ ' + selectedEmail?.to"></span>
+                                <span class="text-gray-400" x-text="selectedEmail?.to ? ('→ ' + selectedEmail.to) : ''"></span>
                             </p>
                             <p class="text-xs text-gray-400 mt-1" x-text="selectedEmail?.date"></p>
                         </div>
-                        
+
                         <!-- Action Buttons -->
-                        <div class="flex gap-2 pt-2">
-                            <button @click="openCompose('reply')" 
+                        <div class="flex flex-wrap gap-2">
+                            <button @click="openCompose('reply')"
                                     class="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded transition">
-                                Reply
+                                ↩ Reply
                             </button>
-                            <button @click="openCompose('forward')" 
-                                    class="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded transition">
-                                Forward
+                            <button @click="openCompose('forward')"
+                                    class="px-3 py-1 bg-blue-400 hover:bg-blue-500 text-white text-sm rounded transition">
+                                → Forward
                             </button>
-                            <button @click="archive()" 
-                                    class="px-3 py-1 bg-gray-300 hover:bg-gray-400 text-gray-800 text-sm rounded transition">
+                            <button @click="archive()"
+                                    class="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm rounded transition">
                                 Archive
                             </button>
-                            <button @click="trainingModalOpen = true" 
+                            <button @click="openTraining()"
                                     class="px-3 py-1 bg-green-500 hover:bg-green-600 text-white text-sm rounded transition">
-                                Train
+                                🎓 Train
                             </button>
-                            <button @click="chatOpen = true" 
+                            <button @click="openChat()"
                                     class="px-3 py-1 bg-purple-500 hover:bg-purple-600 text-white text-sm rounded transition">
-                                Chat
+                                💬 Chat
                             </button>
                         </div>
                     </div>
                 </div>
-                
-                <!-- Email Body (iframe) -->
+
+                <!-- Email Body -->
                 <div class="flex-1 overflow-y-auto p-4">
-                    <div x-show="!selectedEmail" class="text-center text-gray-400 mt-8">
+                    <div x-show="!selectedEmail" class="text-center text-gray-400 mt-8 text-sm">
                         (No email selected)
                     </div>
-                    
+
                     <div x-show="loadingEmail" class="text-center text-gray-400 mt-8">
-                        <p>Loading email...</p>
+                        <div class="inline-block w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                        <p class="mt-2 text-sm">Loading email...</p>
                     </div>
-                    
-                    <div x-show="selectedEmail && !loadingEmail" class="bg-white">
-                        <!-- Email body rendered in iframe for XSS safety -->
-                        <iframe :srcdoc="selectedEmail?.body_html || selectedEmail?.body_plain"
-                                sandbox
-                                class="w-full h-full border-0 rounded"
-                                style="min-height: 400px; border: 1px solid #e5e7eb;"></iframe>
+
+                    <div x-show="selectedEmail && !loadingEmail">
+                        <iframe :srcdoc="selectedEmail?.body_html || ('<pre style=\'font-family:sans-serif;white-space:pre-wrap\'>' + (selectedEmail?.body_plain || '') + '</pre>')"
+                                sandbox="allow-same-origin"
+                                class="w-full border border-gray-200 rounded"
+                                style="min-height: 450px;"
+                                @load="resizeIframe($event.target)"></iframe>
                     </div>
                 </div>
             </div>
-            
-            <!-- ============= CHAT PANEL (Right, 20%, Hidden by default) ============= -->
-            <div x-show="chatOpen" class="border-l border-gray-200 flex flex-col bg-white">
-                
+
+            <!-- ====== CHAT PANEL (Right 20%, hidden by default) ====== -->
+            <div x-show="chatOpen"
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0 translate-x-4"
+                 x-transition:enter-end="opacity-100 translate-x-0"
+                 class="border-l border-gray-200 flex flex-col bg-white overflow-hidden">
+
                 <!-- Chat Header -->
-                <div class="p-4 border-b border-gray-200 flex justify-between items-center flex-shrink-0">
-                    <h3 class="font-semibold">AI Assistant</h3>
-                    <button @click="chatOpen = false" class="text-gray-400 hover:text-gray-600">✕</button>
-                </div>
-                
-                <!-- Chat Context -->
-                <div x-show="selectedEmail" class="p-4 bg-gray-50 border-b border-gray-200 text-sm flex-shrink-0">
-                    <p class="font-semibold text-gray-700">About this email:</p>
-                    <p class="text-gray-600 text-xs mt-2">From: <span x-text="selectedEmail?.from"></span></p>
-                    <p class="text-gray-600 text-xs">Subject: <span x-text="selectedEmail?.subject"></span></p>
-                </div>
-                
-                <!-- Chat Messages -->
-                <div class="flex-1 overflow-y-auto p-4 space-y-3">
-                    <div class="text-sm text-gray-500">
-                        <p>Chat with Miles (AI) about this email.</p>
-                        <p class="text-xs mt-2">Ask: "Why was this filed?" or "Should I change the rule?"</p>
+                <div class="p-3 border-b border-gray-200 flex justify-between items-center flex-shrink-0 bg-purple-50">
+                    <div class="flex items-center gap-2">
+                        <span class="text-purple-600 text-lg">🤖</span>
+                        <span class="font-semibold text-sm text-purple-800">AI Assistant</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button @click="clearChat()"
+                                title="Clear chat"
+                                class="text-xs text-gray-400 hover:text-gray-600 transition">
+                            🗑️
+                        </button>
+                        <button @click="chatOpen = false"
+                                class="text-gray-400 hover:text-gray-600 transition text-lg leading-none">✕</button>
                     </div>
                 </div>
-                
+
+                <!-- Email Context Badge -->
+                <div x-show="selectedEmail"
+                     class="p-3 bg-gray-50 border-b border-gray-200 flex-shrink-0">
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Context</p>
+                    <p class="text-xs text-gray-700 truncate font-medium" x-text="selectedEmail?.subject"></p>
+                    <p class="text-xs text-gray-500 truncate" x-text="'From: ' + (selectedEmail?.from || '')"></p>
+                </div>
+
+                <!-- Messages -->
+                <div id="chatMessages"
+                     class="flex-1 overflow-y-auto p-3 space-y-3 chat-messages">
+
+                    <!-- Welcome message (show when empty) -->
+                    <div x-show="chatMessages.length === 0" class="text-center mt-4">
+                        <p class="text-2xl">🤖</p>
+                        <p class="text-sm text-gray-500 mt-2">Ask me anything about this email.</p>
+                        <p class="text-xs text-gray-400 mt-1">"Why was this filed?" or "Should I create a rule?"</p>
+                    </div>
+
+                    <!-- Message bubbles -->
+                    <template x-for="(msg, idx) in chatMessages" :key="idx">
+                        <div :class="msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'">
+                            <div :class="msg.role === 'user'
+                                    ? 'bg-purple-500 text-white rounded-tl-lg rounded-tr-lg rounded-bl-lg'
+                                    : 'bg-gray-100 text-gray-800 rounded-tl-lg rounded-tr-lg rounded-br-lg'"
+                                 class="max-w-[85%] px-3 py-2 text-sm shadow-sm">
+                                <p class="whitespace-pre-wrap break-words" x-text="msg.text"></p>
+
+                                <!-- Suggestions (AI only) -->
+                                <div x-show="msg.role === 'assistant' && msg.suggestions && msg.suggestions.length > 0"
+                                     class="mt-2 space-y-1">
+                                    <template x-for="(sug, si) in (msg.suggestions || [])" :key="si">
+                                        <button @click="chatInput = sug; $nextTick(() => sendChatMessage())"
+                                                class="block w-full text-left text-xs bg-white bg-opacity-60 hover:bg-opacity-80 px-2 py-1 rounded border border-gray-300 transition truncate">
+                                            💡 <span x-text="sug"></span>
+                                        </button>
+                                    </template>
+                                </div>
+
+                                <!-- Footer: timestamp + copy -->
+                                <div class="flex justify-between items-center mt-1 gap-2">
+                                    <span class="text-xs opacity-60" x-text="msg.timestamp"></span>
+                                    <button @click="copyMessage(msg.text)"
+                                            title="Copy"
+                                            class="text-xs opacity-50 hover:opacity-100 transition">📋</button>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Loading indicator -->
+                    <div x-show="chatLoading" class="flex justify-start">
+                        <div class="bg-gray-100 rounded-lg px-4 py-2 flex items-center gap-2">
+                            <div class="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                            <span class="text-xs text-gray-500">AI thinking...</span>
+                        </div>
+                    </div>
+
+                    <!-- Error -->
+                    <div x-show="chatError" class="bg-red-50 border border-red-200 rounded-lg p-2">
+                        <p class="text-xs text-red-600" x-text="chatError"></p>
+                        <button @click="chatError = null" class="text-xs text-red-400 hover:text-red-600 mt-1">Dismiss</button>
+                    </div>
+                </div>
+
                 <!-- Chat Input -->
-                <div class="p-4 border-t border-gray-200 flex-shrink-0">
-                    <input type="text" 
-                           placeholder="Ask a question..." 
-                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
+                <div class="p-3 border-t border-gray-200 flex-shrink-0">
+                    <div class="flex gap-2 items-end">
+                        <textarea x-model="chatInput"
+                                  @keydown.enter.prevent="if (!$event.shiftKey) sendChatMessage()"
+                                  placeholder="Ask a question... (Enter to send)"
+                                  rows="2"
+                                  :disabled="chatLoading"
+                                  class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none disabled:opacity-60"></textarea>
+                        <button @click="sendChatMessage()"
+                                :disabled="chatLoading || !chatInput.trim()"
+                                :class="(chatLoading || !chatInput.trim())
+                                    ? 'bg-gray-300 cursor-not-allowed'
+                                    : 'bg-purple-500 hover:bg-purple-600'"
+                                class="px-3 py-2 text-white rounded-lg text-sm font-semibold transition flex-shrink-0 self-end">
+                            Send
+                        </button>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1">Shift+Enter for newline</p>
                 </div>
             </div>
         </div>
-        
+
         <!-- ============= MOBILE TAB VIEW ============= -->
         <div class="md:hidden flex flex-col flex-1 overflow-hidden">
-            
-            <!-- Mobile Tab Buttons -->
-            <div class="border-b border-gray-200 flex gap-0 bg-white">
+
+            <!-- Tab Buttons -->
+            <div class="border-b border-gray-200 flex bg-white flex-shrink-0">
                 <button @click="mobileView = 'list'"
                         :class="mobileView === 'list' ? 'border-b-2 border-blue-500 text-blue-500' : 'text-gray-600'"
                         class="flex-1 py-3 text-sm font-semibold transition">
@@ -209,300 +294,311 @@
                     📖 Reader
                 </button>
                 <button @click="mobileView = 'chat'"
-                        :class="mobileView === 'chat' ? 'border-b-2 border-blue-500 text-blue-500' : 'text-gray-600'"
+                        :class="mobileView === 'chat' ? 'border-b-2 border-purple-500 text-purple-500' : 'text-gray-600'"
                         class="flex-1 py-3 text-sm font-semibold transition">
                     💬 Chat
                 </button>
             </div>
-            
-            <!-- Mobile Content (single panel at a time) -->
-            <div class="flex-1 overflow-y-auto">
-                <!-- List View -->
-                <div x-show="mobileView === 'list'" class="space-y-0">
-                    <!-- Search -->
-                    <div class="p-3 border-b border-gray-200 sticky top-0 bg-white">
-                        <input x-model="searchQuery" 
-                               @input="search($event.target.value)"
-                               type="text" 
-                               placeholder="Search..." 
+
+            <!-- Mobile Content -->
+            <div class="flex-1 overflow-hidden flex flex-col">
+
+                <!-- Mobile: List -->
+                <div x-show="mobileView === 'list'" class="flex-1 overflow-y-auto">
+                    <div class="p-3 border-b border-gray-200 sticky top-0 bg-white z-10">
+                        <button @click="openCompose('compose')"
+                                class="w-full mb-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold rounded-lg transition">
+                            ✉ Compose
+                        </button>
+                        <input x-model="searchQuery"
+                               type="text"
+                               placeholder="Search..."
                                class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                     </div>
-                    <!-- Email List Items -->
                     <template x-for="email in filteredEmails" :key="email.id">
                         <div @click="selectEmail(email); mobileView = 'reader'"
                              class="p-3 border-b border-gray-200 cursor-pointer active:bg-gray-100">
                             <div class="font-semibold text-sm truncate" x-text="email.from"></div>
                             <div class="text-gray-600 text-xs truncate" x-text="email.subject"></div>
+                            <div class="text-gray-400 text-xs mt-1 truncate" x-text="email.snippet"></div>
                             <div class="text-gray-400 text-xs mt-1" x-text="formatDate(email.date)"></div>
                         </div>
                     </template>
+                    <div x-show="hasMore" class="p-3">
+                        <button @click="loadMore()"
+                                :disabled="loadingList"
+                                class="w-full py-2 rounded-lg bg-blue-500 text-white text-sm font-semibold disabled:opacity-50">
+                            <span x-show="!loadingList">Load More</span>
+                            <span x-show="loadingList">Loading...</span>
+                        </button>
+                    </div>
                 </div>
-                
-                <!-- Reader View -->
-                <div x-show="mobileView === 'reader'" class="h-full flex flex-col">
+
+                <!-- Mobile: Reader -->
+                <div x-show="mobileView === 'reader'" class="flex-1 flex flex-col overflow-hidden">
                     <div x-show="!selectedEmail" class="p-4 text-center text-gray-400">
-                        Select an email first
+                        Select an email from the list
                     </div>
                     <div x-show="selectedEmail" class="flex-1 flex flex-col overflow-hidden">
-                        <!-- Header -->
                         <div class="p-3 border-b border-gray-200 flex-shrink-0">
                             <h3 class="font-bold text-sm" x-text="selectedEmail?.subject"></h3>
-                            <p class="text-xs text-gray-600 mt-1" x-text="selectedEmail?.from"></p>
-                            <div class="flex gap-2 mt-3">
-                                <button @click="openCompose('reply')" class="flex-1 py-1 bg-blue-500 text-white text-xs rounded">Reply</button>
-                                <button @click="openCompose('forward')" class="flex-1 py-1 bg-blue-400 text-white text-xs rounded">Fwd</button>
-                                <button @click="archive()" class="flex-1 py-1 bg-gray-300 text-xs rounded">Archive</button>
-                                <button @click="trainingModalOpen = true" class="flex-1 py-1 bg-green-500 text-white text-xs rounded">Train</button>
+                            <p class="text-xs text-gray-500 mt-1" x-text="selectedEmail?.from"></p>
+                            <div class="flex flex-wrap gap-1.5 mt-2">
+                                <button @click="openCompose('reply')"
+                                        class="flex-1 py-1 bg-blue-500 text-white text-xs rounded">↩ Reply</button>
+                                <button @click="openCompose('forward')"
+                                        class="flex-1 py-1 bg-blue-400 text-white text-xs rounded">→ Fwd</button>
+                                <button @click="archive()"
+                                        class="flex-1 py-1 bg-gray-200 text-xs rounded">Archive</button>
+                                <button @click="openTraining()"
+                                        class="flex-1 py-1 bg-green-500 text-white text-xs rounded">Train</button>
+                                <button @click="mobileView = 'chat'"
+                                        class="flex-1 py-1 bg-purple-500 text-white text-xs rounded">Chat</button>
                             </div>
                         </div>
-                        <!-- Body -->
                         <div class="flex-1 overflow-y-auto p-3">
-                            <iframe :srcdoc="selectedEmail?.body_html || selectedEmail?.body_plain"
-                                    sandbox
-                                    class="w-full h-full border-0"
-                                    style="min-height: 300px;"></iframe>
+                            <div x-show="loadingEmail" class="text-center mt-4">
+                                <div class="inline-block w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                            </div>
+                            <iframe x-show="!loadingEmail"
+                                    :srcdoc="selectedEmail?.body_html || ('<pre style=\'font-family:sans-serif;white-space:pre-wrap\'>' + (selectedEmail?.body_plain || '') + '</pre>')"
+                                    sandbox="allow-same-origin"
+                                    class="w-full border-0"
+                                    style="min-height: 400px;"></iframe>
                         </div>
                     </div>
                 </div>
-                
-                <!-- Chat View -->
-                <div x-show="mobileView === 'chat'" class="flex flex-col h-full">
-                    <div class="p-4 bg-gray-50 border-b border-gray-200 text-sm flex-shrink-0">
-                        <p x-show="selectedEmail" class="text-gray-600 text-xs">
-                            Email: <span x-text="selectedEmail?.subject"></span>
-                        </p>
-                        <p x-show="!selectedEmail" class="text-gray-400">Select an email first</p>
+
+                <!-- Mobile: Chat -->
+                <div x-show="mobileView === 'chat'" class="flex-1 flex flex-col overflow-hidden">
+                    <div x-show="!selectedEmail" class="p-4 text-center text-gray-400">
+                        Select an email first, then come back to Chat
                     </div>
-                    <div class="flex-1 p-4 text-center text-gray-500 text-sm">
-                        <p>Chat coming soon...</p>
-                    </div>
+                    <template x-if="selectedEmail">
+                        <div class="flex-1 flex flex-col overflow-hidden">
+                            <!-- Context -->
+                            <div class="p-3 bg-gray-50 border-b border-gray-200 flex-shrink-0">
+                                <p class="text-xs font-semibold text-gray-500">📧 <span x-text="selectedEmail?.subject"></span></p>
+                                <button @click="clearChat()" class="text-xs text-red-400 hover:text-red-600 mt-1">Clear chat</button>
+                            </div>
+                            <!-- Messages -->
+                            <div id="chatMessagesMobile" class="flex-1 overflow-y-auto p-3 space-y-3 chat-messages">
+                                <div x-show="chatMessages.length === 0" class="text-center mt-4 text-gray-400 text-sm">
+                                    Ask me anything about this email
+                                </div>
+                                <template x-for="(msg, idx) in chatMessages" :key="idx">
+                                    <div :class="msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'">
+                                        <div :class="msg.role === 'user'
+                                                ? 'bg-purple-500 text-white rounded-tl-lg rounded-tr-lg rounded-bl-lg'
+                                                : 'bg-gray-100 text-gray-800 rounded-tl-lg rounded-tr-lg rounded-br-lg'"
+                                             class="max-w-[85%] px-3 py-2 text-sm">
+                                            <p class="whitespace-pre-wrap break-words" x-text="msg.text"></p>
+                                            <span class="text-xs opacity-50 mt-1 block" x-text="msg.timestamp"></span>
+                                        </div>
+                                    </div>
+                                </template>
+                                <div x-show="chatLoading" class="flex justify-start">
+                                    <div class="bg-gray-100 rounded-lg px-4 py-2 flex items-center gap-2">
+                                        <div class="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                                        <span class="text-xs text-gray-500">Thinking...</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Input -->
+                            <div class="p-3 border-t border-gray-200 flex gap-2 flex-shrink-0">
+                                <input x-model="chatInput"
+                                       @keydown.enter="sendChatMessage()"
+                                       type="text"
+                                       placeholder="Ask about this email..."
+                                       :disabled="chatLoading"
+                                       class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-60">
+                                <button @click="sendChatMessage()"
+                                        :disabled="chatLoading || !chatInput.trim()"
+                                        class="px-4 py-2 bg-purple-500 hover:bg-purple-600 disabled:bg-gray-300 text-white rounded-lg text-sm font-semibold transition">
+                                    Send
+                                </button>
+                            </div>
+                        </div>
+                    </template>
                 </div>
             </div>
         </div>
-        
+
         <!-- ============= TRAINING MODAL ============= -->
-        <div x-show="trainingModalOpen" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-96 flex flex-col">
-                
-                <!-- Modal Header -->
+        <div x-show="trainingModalOpen"
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100"
+             class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[85vh] flex flex-col">
+
+                <!-- Header -->
                 <div class="p-4 border-b border-gray-200 flex justify-between items-center flex-shrink-0">
-                    <h2 class="text-xl font-bold">Train a New Rule</h2>
-                    <button @click="resetTraining()" class="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
+                    <h2 class="text-xl font-bold">🎓 Train a New Rule</h2>
+                    <button @click="resetTraining()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">✕</button>
                 </div>
-                
-                <!-- Modal Body (scrollable) -->
+
+                <!-- Progress dots -->
+                <div class="px-6 pt-4 flex gap-2 flex-shrink-0">
+                    <template x-for="step in [0,1,2,3,4,5]" :key="step">
+                        <div :class="trainingStep === step ? 'bg-blue-500 w-6' : trainingStep > step ? 'bg-blue-300 w-3' : 'bg-gray-200 w-3'"
+                             class="h-2 rounded-full transition-all duration-200"></div>
+                    </template>
+                </div>
+
+                <!-- Body -->
                 <div class="flex-1 overflow-y-auto p-6">
-                    
-                    <!-- Q0: Which emails should this apply to? -->
+
+                    <!-- Q0 -->
                     <div x-show="trainingStep === 0" class="space-y-4">
                         <h3 class="text-lg font-semibold">Q0: Which emails should this apply to?</h3>
-                        <p class="text-sm text-gray-600">Select what identifies these emails</p>
-                        
-                        <div class="space-y-3">
-                            <div>
-                                <label class="block text-sm font-semibold mb-1">From (sender):</label>
-                                <input x-model="training.fromPattern" 
-                                       placeholder="e.g., reports@positive-electric.com"
-                                       type="text"
-                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                <p class="text-xs text-gray-500 mt-1">Pre-filled from selected email</p>
-                            </div>
-                            
-                            <div>
-                                <label class="block text-sm font-semibold mb-1">Subject contains (optional):</label>
-                                <input x-model="training.subjectKeywords" 
-                                       placeholder="e.g., report, status, weekly"
-                                       type="text"
-                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                <p class="text-xs text-gray-500 mt-1">Comma-separated keywords</p>
-                            </div>
+                        <p class="text-sm text-gray-600">Identify the sender or subject pattern</p>
+                        <div>
+                            <label class="block text-sm font-semibold mb-1">From (sender) <span class="text-red-500">*</span></label>
+                            <input x-model="training.fromPattern"
+                                   type="text"
+                                   placeholder="e.g., reports@positive-electric.com"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
                         </div>
-                        
-                        <div class="text-sm text-red-500" x-show="trainingError" x-text="trainingError"></div>
+                        <div>
+                            <label class="block text-sm font-semibold mb-1">Subject contains (optional)</label>
+                            <input x-model="training.subjectKeywords"
+                                   type="text"
+                                   placeholder="e.g., report, status, weekly"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+                        </div>
+                        <p x-show="trainingError" class="text-sm text-red-500" x-text="trainingError"></p>
                     </div>
-                    
-                    <!-- Q1: What do you do? -->
+
+                    <!-- Q1 -->
                     <div x-show="trainingStep === 1" class="space-y-4">
                         <h3 class="text-lg font-semibold">Q1: What do you do with this email?</h3>
-                        
                         <div class="grid grid-cols-2 gap-2">
-                            <button @click="training.primaryAction = 'do_nothing'" 
-                                    :class="training.primaryAction === 'do_nothing' ? 'bg-blue-500 text-white' : 'bg-gray-200'"
-                                    class="py-2 px-3 rounded-lg text-sm font-semibold transition">
-                                Do Nothing
-                            </button>
-                            <button @click="training.primaryAction = 'file'" 
-                                    :class="training.primaryAction === 'file' ? 'bg-blue-500 text-white' : 'bg-gray-200'"
-                                    class="py-2 px-3 rounded-lg text-sm font-semibold transition">
-                                File It
-                            </button>
-                            <button @click="training.primaryAction = 'archive'" 
-                                    :class="training.primaryAction === 'archive' ? 'bg-blue-500 text-white' : 'bg-gray-200'"
-                                    class="py-2 px-3 rounded-lg text-sm font-semibold transition">
-                                Archive
-                            </button>
-                            <button @click="training.primaryAction = 'delete'" 
-                                    :class="training.primaryAction === 'delete' ? 'bg-blue-500 text-white' : 'bg-gray-200'"
-                                    class="py-2 px-3 rounded-lg text-sm font-semibold transition">
-                                Delete
-                            </button>
-                            <button @click="training.primaryAction = 'forward'" 
-                                    :class="training.primaryAction === 'forward' ? 'bg-blue-500 text-white' : 'bg-gray-200'"
-                                    class="py-2 px-3 rounded-lg text-sm font-semibold transition">
-                                Forward
-                            </button>
-                            <button @click="training.primaryAction = 'ticket'" 
-                                    :class="training.primaryAction === 'ticket' ? 'bg-blue-500 text-white' : 'bg-gray-200'"
-                                    class="py-2 px-3 rounded-lg text-sm font-semibold transition">
-                                CW Ticket
-                            </button>
+                            <template x-for="action in ['do_nothing','file','archive','delete','forward','ticket']" :key="action">
+                                <button @click="training.primaryAction = action"
+                                        :class="training.primaryAction === action ? 'bg-blue-500 text-white' : 'bg-gray-100 hover:bg-gray-200'"
+                                        class="py-2 px-3 rounded-lg text-sm font-semibold transition capitalize"
+                                        x-text="action.replace('_',' ')"></button>
+                            </template>
                         </div>
-                        
-                        <!-- Conditional fields based on action -->
-                        <div x-show="training.primaryAction === 'file'" class="mt-4">
+                        <div x-show="training.primaryAction === 'file'" class="mt-2">
                             <label class="block text-sm font-semibold mb-1">File to folder:</label>
-                            <input x-model="training.folderTarget" 
-                                   placeholder="e.g., Reports"
-                                   type="text"
-                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <input x-model="training.folderTarget" type="text" placeholder="e.g., Reports"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                         </div>
-                        
-                        <div x-show="training.primaryAction === 'forward'" class="mt-4">
+                        <div x-show="training.primaryAction === 'forward'" class="mt-2">
                             <label class="block text-sm font-semibold mb-1">Forward to:</label>
-                            <input x-model="training.forwardTo" 
-                                   placeholder="e.g., john@example.com"
-                                   type="email"
-                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <input x-model="training.forwardTo" type="email" placeholder="e.g., john@example.com"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                         </div>
-                        
-                        <div x-show="training.primaryAction === 'ticket'" class="mt-4">
+                        <div x-show="training.primaryAction === 'ticket'" class="mt-2">
                             <label class="block text-sm font-semibold mb-1">Board:</label>
                             <select x-model="training.ticketBoard"
-                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                                 <option value="">Select board...</option>
                                 <option value="1">IT Support</option>
                                 <option value="2">Projects</option>
                                 <option value="3">Alerts</option>
                             </select>
                         </div>
-                        
-                        <div class="text-sm text-red-500" x-show="trainingError" x-text="trainingError"></div>
+                        <p x-show="trainingError" class="text-sm text-red-500" x-text="trainingError"></p>
                     </div>
-                    
-                    <!-- Q2: Does this sometimes need different handling? -->
+
+                    <!-- Q2 -->
                     <div x-show="trainingStep === 2" class="space-y-4">
-                        <h3 class="text-lg font-semibold">Q2: Does this type sometimes need different handling?</h3>
-                        <p class="text-sm text-gray-600">e.g., file normally, but ticket if there's an error</p>
-                        
+                        <h3 class="text-lg font-semibold">Q2: Does this sometimes need different handling?</h3>
+                        <p class="text-sm text-gray-600">e.g., file normally, but create a ticket if there's an error</p>
                         <div class="flex gap-4">
-                            <button @click="training.hasCondition = false; trainingStep = 4" 
+                            <button @click="training.hasCondition = false; trainingStep = 5"
                                     class="flex-1 py-3 px-4 bg-gray-200 hover:bg-gray-300 rounded-lg font-semibold transition">
-                                No
+                                No — just <span x-text="training.primaryAction"></span> it
                             </button>
-                            <button @click="training.hasCondition = true; trainingStep = 3" 
+                            <button @click="training.hasCondition = true; trainingStep = 3"
                                     class="flex-1 py-3 px-4 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold transition">
-                                Yes
+                                Yes, sometimes different
                             </button>
                         </div>
                     </div>
-                    
-                    <!-- Q3: What indicates the difference? -->
+
+                    <!-- Q3 -->
                     <div x-show="trainingStep === 3" class="space-y-4">
                         <h3 class="text-lg font-semibold">Q3: What keywords indicate the difference?</h3>
                         <p class="text-sm text-gray-600">e.g., ERROR, FAILED, CRITICAL, URGENT</p>
-                        
-                        <input x-model="training.conditionKeywords" 
-                               placeholder="Comma-separated keywords..."
+                        <input x-model="training.conditionKeywords"
                                type="text"
-                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        
-                        <div class="text-sm text-red-500" x-show="trainingError" x-text="trainingError"></div>
+                               placeholder="Comma-separated keywords..."
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <p x-show="trainingError" class="text-sm text-red-500" x-text="trainingError"></p>
                     </div>
-                    
-                    <!-- Q4: What happens then? -->
+
+                    <!-- Q4 -->
                     <div x-show="trainingStep === 4" class="space-y-4">
-                        <h3 class="text-lg font-semibold">Q4: When you see that indicator, what happens?</h3>
-                        <p class="text-sm text-gray-600" x-show="training.hasCondition">e.g., create a ticket instead of filing</p>
-                        
-                        <div class="grid grid-cols-2 gap-2" x-show="training.hasCondition">
-                            <button @click="training.exceptionAction = 'file'" 
-                                    :class="training.exceptionAction === 'file' ? 'bg-blue-500 text-white' : 'bg-gray-200'"
-                                    class="py-2 px-3 rounded-lg text-sm font-semibold transition">
-                                File
-                            </button>
-                            <button @click="training.exceptionAction = 'ticket'" 
-                                    :class="training.exceptionAction === 'ticket' ? 'bg-blue-500 text-white' : 'bg-gray-200'"
-                                    class="py-2 px-3 rounded-lg text-sm font-semibold transition">
-                                Ticket
-                            </button>
-                            <button @click="training.exceptionAction = 'forward'" 
-                                    :class="training.exceptionAction === 'forward' ? 'bg-blue-500 text-white' : 'bg-gray-200'"
-                                    class="py-2 px-3 rounded-lg text-sm font-semibold transition">
-                                Forward
-                            </button>
-                            <button @click="training.exceptionAction = 'archive'" 
-                                    :class="training.exceptionAction === 'archive' ? 'bg-blue-500 text-white' : 'bg-gray-200'"
-                                    class="py-2 px-3 rounded-lg text-sm font-semibold transition">
-                                Archive
-                            </button>
+                        <h3 class="text-lg font-semibold">Q4: When that indicator appears, what happens?</h3>
+                        <div class="grid grid-cols-2 gap-2">
+                            <template x-for="action in ['file','ticket','forward','archive','delete','do_nothing']" :key="action">
+                                <button @click="training.exceptionAction = action"
+                                        :class="training.exceptionAction === action ? 'bg-blue-500 text-white' : 'bg-gray-100 hover:bg-gray-200'"
+                                        class="py-2 px-3 rounded-lg text-sm font-semibold transition capitalize"
+                                        x-text="action.replace('_',' ')"></button>
+                            </template>
                         </div>
-                        
-                        <p class="text-sm text-gray-600 mt-4" x-show="!training.hasCondition">Ready to save rule?</p>
                     </div>
-                    
-                    <!-- Q5: Review & Confirm -->
+
+                    <!-- Q5: Review -->
                     <div x-show="trainingStep === 5" class="space-y-4">
                         <h3 class="text-lg font-semibold">Review Your Rule</h3>
-                        <div class="bg-gray-50 p-4 rounded-lg space-y-2 text-sm">
-                            <p><span class="font-semibold">Rule Name:</span> <span x-text="training.fromPattern + ' - ' + training.primaryAction"></span></p>
-                            <p><span class="font-semibold">From:</span> <span x-text="training.fromPattern || '(any)'"></span></p>
-                            <p><span class="font-semibold">Subject:</span> <span x-text="training.subjectKeywords || '(any)'"></span></p>
-                            <p><span class="font-semibold">Primary Action:</span> <span x-text="training.primaryAction"></span></p>
-                            <p x-show="training.folderTarget"><span class="font-semibold">Folder:</span> <span x-text="training.folderTarget"></span></p>
-                            <p x-show="training.forwardTo"><span class="font-semibold">Forward to:</span> <span x-text="training.forwardTo"></span></p>
-                            <p x-show="training.hasCondition"><span class="font-semibold">If contains:</span> <span x-text="training.conditionKeywords"></span></p>
-                            <p x-show="training.hasCondition"><span class="font-semibold">Then:</span> <span x-text="training.exceptionAction"></span></p>
+                        <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-2 text-sm">
+                            <p><span class="font-semibold text-gray-600">Name:</span> <span x-text="training.fromPattern + ' → ' + training.primaryAction"></span></p>
+                            <p><span class="font-semibold text-gray-600">From:</span> <span x-text="training.fromPattern || '(any)'"></span></p>
+                            <p x-show="training.subjectKeywords"><span class="font-semibold text-gray-600">Subject:</span> <span x-text="training.subjectKeywords"></span></p>
+                            <p><span class="font-semibold text-gray-600">Action:</span> <span class="capitalize" x-text="training.primaryAction.replace('_',' ')"></span></p>
+                            <p x-show="training.folderTarget"><span class="font-semibold text-gray-600">Folder:</span> <span x-text="training.folderTarget"></span></p>
+                            <p x-show="training.forwardTo"><span class="font-semibold text-gray-600">Forward to:</span> <span x-text="training.forwardTo"></span></p>
+                            <template x-if="training.hasCondition">
+                                <div class="border-t border-gray-200 pt-2 mt-2">
+                                    <p><span class="font-semibold text-gray-600">If body contains:</span> <span x-text="training.conditionKeywords"></span></p>
+                                    <p><span class="font-semibold text-gray-600">Then:</span> <span class="capitalize" x-text="(training.exceptionAction || '').replace('_',' ')"></span></p>
+                                </div>
+                            </template>
                         </div>
-                        <p class="text-sm text-gray-600">This rule will start as <strong>pending</strong>. You'll activate it in the Audit tab.</p>
-                        <div class="text-sm text-red-500" x-show="trainingError" x-text="trainingError"></div>
+                        <p class="text-sm text-gray-500">Rule starts as <strong>pending</strong>. Activate it from the Rules view.</p>
+                        <p x-show="trainingError" class="text-sm text-red-500" x-text="trainingError"></p>
                     </div>
                 </div>
-                
-                <!-- Modal Footer (buttons) -->
-                <div class="p-4 border-t border-gray-200 flex gap-3 justify-between flex-shrink-0">
-                    <button @click="previousStep()" 
+
+                <!-- Footer -->
+                <div class="p-4 border-t border-gray-200 flex justify-between items-center flex-shrink-0">
+                    <button @click="previousStep()"
                             x-show="trainingStep > 0"
-                            class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition">
-                        Back
+                            class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
+                        ← Back
                     </button>
-                    
-                    <div class="flex gap-3">
-                        <button @click="resetTraining()" 
-                                class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition">
+                    <div class="flex gap-3 ml-auto">
+                        <button @click="resetTraining()"
+                                class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition text-sm">
                             Cancel
                         </button>
-                        
-                        <button @click="nextStep()" 
+                        <button @click="nextStep()"
                                 x-show="trainingStep < 5"
                                 :disabled="!canProceed()"
                                 :class="!canProceed() ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'"
-                                class="px-4 py-2 text-white rounded-lg transition">
-                            Next
+                                class="px-4 py-2 text-white rounded-lg transition text-sm font-semibold">
+                            Next →
                         </button>
-                        
-                        <button @click="saveRule()" 
+                        <button @click="saveRule()"
                                 x-show="trainingStep === 5"
                                 :disabled="trainingSaving"
                                 :class="trainingSaving ? 'bg-gray-300 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'"
-                                class="px-4 py-2 text-white rounded-lg transition">
-                            <span x-show="!trainingSaving">Save Rule</span>
+                                class="px-4 py-2 text-white rounded-lg transition text-sm font-semibold flex items-center gap-2">
+                            <span x-show="trainingSaving" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block"></span>
+                            <span x-show="!trainingSaving">💾 Save Rule</span>
                             <span x-show="trainingSaving">Saving...</span>
                         </button>
                     </div>
                 </div>
             </div>
         </div>
-        
+
         <!-- ============= COMPOSE MODAL ============= -->
         <div x-show="composeOpen"
              x-transition:enter="transition ease-out duration-200"
@@ -514,7 +610,7 @@
              class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
             <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl flex flex-col max-h-[90vh]">
 
-                <!-- Modal Header -->
+                <!-- Header -->
                 <div class="p-4 border-b border-gray-200 flex justify-between items-center flex-shrink-0">
                     <h2 class="text-xl font-bold"
                         x-text="composeType === 'reply' ? '↩ Reply' : composeType === 'forward' ? '→ Forward' : '✉ New Email'">
@@ -522,68 +618,51 @@
                     <button @click="discardCompose()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">✕</button>
                 </div>
 
-                <!-- Modal Body -->
+                <!-- Body -->
                 <div class="flex-1 overflow-y-auto p-6 space-y-4">
-
-                    <!-- To -->
                     <div>
                         <label class="block text-sm font-semibold mb-1">To <span class="text-red-500">*</span></label>
-                        <input x-model="composeData.to"
-                               type="email"
-                               placeholder="recipient@example.com"
+                        <input x-model="composeData.to" type="email" placeholder="recipient@example.com"
                                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                :disabled="composeSending">
                     </div>
-
-                    <!-- Cc -->
                     <div>
                         <label class="block text-sm font-semibold mb-1">Cc</label>
-                        <input x-model="composeData.cc"
-                               type="text"
-                               placeholder="cc@example.com (optional)"
+                        <input x-model="composeData.cc" type="text" placeholder="cc@example.com (optional)"
                                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                :disabled="composeSending">
                     </div>
-
-                    <!-- Subject -->
                     <div>
                         <label class="block text-sm font-semibold mb-1">Subject <span class="text-red-500">*</span></label>
-                        <input x-model="composeData.subject"
-                               type="text"
-                               placeholder="Subject"
+                        <input x-model="composeData.subject" type="text" placeholder="Subject"
                                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                :disabled="composeSending">
                     </div>
-
-                    <!-- Body -->
                     <div>
-                        <label class="block text-sm font-semibold mb-1">Message <span class="text-red-500">*</span></label>
+                        <label class="block text-sm font-semibold mb-1">Message <span x-show="composeType !== 'forward'" class="text-red-500">*</span></label>
                         <textarea x-model="composeData.body"
                                   rows="10"
                                   :placeholder="composeType === 'forward'
-                                    ? 'Add a note (optional) — original message will be appended below...'
-                                    : 'Write your message here (plaintext)...'"
+                                      ? 'Add a note (optional)...'
+                                      : 'Write your message (plaintext)...'"
                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
                                   :disabled="composeSending"></textarea>
-                        <!-- Forward preview hint -->
                         <p x-show="composeType === 'forward' && selectedEmail"
                            class="text-xs text-gray-400 mt-1">
-                            ↓ Original from <span x-text="selectedEmail?.from" class="font-medium"></span> will be appended automatically.
+                            Original from <span x-text="selectedEmail?.from" class="font-medium"></span> will be appended.
                         </p>
                     </div>
-
-                    <!-- Error -->
-                    <div x-show="composeError" class="text-sm text-red-500 bg-red-50 p-3 rounded-lg" x-text="composeError"></div>
+                    <div x-show="composeError"
+                         class="text-sm text-red-600 bg-red-50 p-3 rounded-lg" x-text="composeError"></div>
                 </div>
 
-                <!-- Modal Footer -->
-                <div class="p-4 border-t border-gray-200 flex gap-3 justify-between flex-shrink-0">
+                <!-- Footer -->
+                <div class="p-4 border-t border-gray-200 flex justify-between flex-shrink-0">
                     <button @click="discardCompose()"
                             :disabled="composeSending"
                             class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition disabled:opacity-50">
                         Discard
                     </button>
-
                     <button @click="sendCompose()"
                             :disabled="composeSending || !composeData.to.trim() || !composeData.subject.trim() || (composeType !== 'forward' && !composeData.body.trim())"
                             :class="(composeSending || !composeData.to.trim() || !composeData.subject.trim() || (composeType !== 'forward' && !composeData.body.trim()))
@@ -597,44 +676,416 @@
             </div>
         </div>
 
-        <!-- ============= TOAST NOTIFICATIONS ============= -->
-        <div x-show="toast.visible" 
-             class="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 bg-green-500 text-white p-3 rounded-lg shadow-lg flex justify-between items-center">
+        <!-- ============= TOAST ============= -->
+        <div x-show="toast.visible"
+             x-transition:enter="transition ease-out duration-300"
+             x-transition:enter-start="opacity-0 translate-y-4"
+             x-transition:enter-end="opacity-100 translate-y-0"
+             x-transition:leave="transition ease-in duration-200"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0"
+             :class="toast.type === 'error' ? 'bg-red-500' : 'bg-green-500'"
+             class="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 text-white p-3 rounded-lg shadow-lg flex justify-between items-center z-[70]">
             <span x-text="toast.message"></span>
-            <button @click="toast.visible = false" class="ml-2 font-bold">✕</button>
-        </div>
-        
-        <!-- ============= ERROR MESSAGE ============= -->
-        <div x-show="errorMessage" 
-             class="fixed top-4 left-4 right-4 md:left-auto md:right-4 md:w-96 bg-red-500 text-white p-3 rounded-lg shadow-lg flex justify-between items-center">
-            <span x-text="errorMessage"></span>
-            <button @click="errorMessage = null" class="ml-2 font-bold">✕</button>
+            <button @click="toast.visible = false" class="ml-4 font-bold text-white opacity-70 hover:opacity-100">✕</button>
         </div>
     </div>
-    
-    <!-- Alpine.js Script -->
+
+    <!-- ============= ALPINE.JS APPLICATION SCRIPT ============= -->
     <script>
-        function gmailClient() {
-            return {
-                // State
-                selectedEmailId: null,
-                selectedEmail: null,
-                emailList: [],
-                emailCache: {},
-                filteredEmailsComputed: [],
-                nextPageToken: null,
-                hasMore: true,
-                loadingList: false,
-                loadingEmail: false,
-                errorMessage: null,
-                currentFolder: 'INBOX',
-                searchQuery: '',
-                chatOpen: false,
-                trainingModalOpen: false,
-                trainingStep: 0,
-                trainingSaving: false,
-                trainingError: null,
-                training: {
+    function gmailClient() {
+        return {
+            // ─── Email List State ──────────────────────────────────
+            emailList: [],
+            emailCache: {},
+            selectedEmailId: null,
+            selectedEmail: null,
+            nextPageToken: null,
+            hasMore: true,
+            loadingList: false,
+            loadingEmail: false,
+            currentFolder: 'INBOX',
+            searchQuery: '',
+
+            // ─── UI State ─────────────────────────────────────────
+            chatOpen: false,
+            mobileView: 'list',
+            errorMessage: null,
+
+            // ─── Toast ────────────────────────────────────────────
+            toast: { visible: false, message: '', type: 'success' },
+
+            // ─── Chat State ───────────────────────────────────────
+            chatMessages: [],
+            chatInput: '',
+            chatLoading: false,
+            chatError: null,
+
+            // ─── Training Modal ───────────────────────────────────
+            trainingModalOpen: false,
+            trainingStep: 0,
+            trainingSaving: false,
+            trainingError: null,
+            training: {
+                fromPattern: '',
+                subjectKeywords: '',
+                primaryAction: 'file',
+                folderTarget: 'Reports',
+                forwardTo: '',
+                ticketBoard: '1',
+                hasCondition: false,
+                conditionKeywords: '',
+                exceptionAction: 'ticket'
+            },
+
+            // ─── Compose Modal ────────────────────────────────────
+            composeOpen: false,
+            composeType: 'compose',
+            composeData: { to: '', cc: '', subject: '', body: '' },
+            composeSending: false,
+            composeError: null,
+
+            // ─────────────────────────────────────────────────────
+            // COMPUTED
+            // ─────────────────────────────────────────────────────
+
+            get filteredEmails() {
+                if (!this.searchQuery.trim()) return this.emailList;
+                const q = this.searchQuery.toLowerCase();
+                return this.emailList.filter(e =>
+                    (e.from || '').toLowerCase().includes(q) ||
+                    (e.subject || '').toLowerCase().includes(q) ||
+                    (e.snippet || '').toLowerCase().includes(q)
+                );
+            },
+
+            // ─────────────────────────────────────────────────────
+            // INIT
+            // ─────────────────────────────────────────────────────
+
+            init() {
+                this.fetchEmails();
+            },
+
+            // ─────────────────────────────────────────────────────
+            // EMAIL OPERATIONS
+            // ─────────────────────────────────────────────────────
+
+            async fetchEmails() {
+                if (this.loadingList) return;
+                this.loadingList = true;
+                try {
+                    const url = new URL('/api/gmail/messages', window.location.origin);
+                    url.searchParams.set('limit', '20');
+                    url.searchParams.set('folder', this.currentFolder);
+                    if (this.nextPageToken) {
+                        url.searchParams.set('pageToken', this.nextPageToken);
+                    }
+
+                    const res = await fetch(url);
+                    if (res.status === 401) {
+                        window.location.href = '/auth/google?redirect=' + encodeURIComponent(window.location.pathname);
+                        return;
+                    }
+                    if (!res.ok) throw new Error(`API error ${res.status}`);
+
+                    const data = await res.json();
+
+                    // Deduplicate
+                    const existing = new Set(this.emailList.map(e => e.id));
+                    const fresh = (data.messages || []).filter(e => !existing.has(e.id));
+                    this.emailList = [...this.emailList, ...fresh];
+
+                    this.nextPageToken = data.nextPageToken || null;
+                    this.hasMore = !!data.nextPageToken;
+                } catch (err) {
+                    this.showToast(`Failed to load emails: ${err.message}`, 'error');
+                } finally {
+                    this.loadingList = false;
+                }
+            },
+
+            async loadMore() {
+                if (!this.hasMore || this.loadingList) return;
+                await this.fetchEmails();
+            },
+
+            async resetList() {
+                this.emailList = [];
+                this.emailCache = {};
+                this.nextPageToken = null;
+                this.hasMore = true;
+                this.selectedEmailId = null;
+                this.selectedEmail = null;
+                await this.fetchEmails();
+            },
+
+            async selectEmail(email) {
+                this.selectedEmailId = email.id;
+
+                // Clear chat when switching emails
+                this.clearChat();
+
+                // Use cache first
+                if (this.emailCache[email.id]) {
+                    this.selectedEmail = this.emailCache[email.id];
+                    return;
+                }
+
+                // Quick preview while loading
+                this.selectedEmail = email;
+                this.loadingEmail = true;
+
+                try {
+                    const res = await fetch(`/api/gmail/messages/${email.id}`);
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+                    const full = await res.json();
+                    this.emailCache[email.id] = full;
+
+                    // Only apply if still selected
+                    if (this.selectedEmailId === email.id) {
+                        this.selectedEmail = full;
+                    }
+                } catch (err) {
+                    this.showToast(`Failed to load email: ${err.message}`, 'error');
+                } finally {
+                    this.loadingEmail = false;
+                }
+            },
+
+            async archive() {
+                if (!this.selectedEmailId) return;
+                const id = this.selectedEmailId;
+                try {
+                    const res = await fetch(`/api/gmail/messages/${id}/archive`, { method: 'POST' });
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+                    this.emailList = this.emailList.filter(e => e.id !== id);
+                    delete this.emailCache[id];
+                    this.selectedEmailId = null;
+                    this.selectedEmail = null;
+                    this.chatOpen = false;
+                    this.showToast('Email archived');
+                } catch (err) {
+                    this.showToast(`Archive failed: ${err.message}`, 'error');
+                }
+            },
+
+            resizeIframe(iframe) {
+                try {
+                    const doc = iframe.contentDocument || iframe.contentWindow.document;
+                    iframe.style.height = (doc.body.scrollHeight + 32) + 'px';
+                } catch (_) { /* cross-origin sandbox */ }
+            },
+
+            // ─────────────────────────────────────────────────────
+            // CHAT
+            // ─────────────────────────────────────────────────────
+
+            openChat() {
+                this.chatOpen = true;
+                this.$nextTick(() => this.scrollChatToBottom());
+            },
+
+            clearChat() {
+                this.chatMessages = [];
+                this.chatInput = '';
+                this.chatError = null;
+            },
+
+            scrollChatToBottom() {
+                const el = document.getElementById('chatMessages') || document.getElementById('chatMessagesMobile');
+                if (el) el.scrollTop = el.scrollHeight;
+            },
+
+            formatTime(date) {
+                return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            },
+
+            async sendChatMessage() {
+                const text = this.chatInput.trim();
+                if (!text || this.chatLoading) return;
+
+                // Push user message immediately
+                this.chatMessages.push({
+                    role: 'user',
+                    text,
+                    timestamp: this.formatTime(new Date()),
+                    suggestions: []
+                });
+                this.chatInput = '';
+                this.chatError = null;
+                this.$nextTick(() => this.scrollChatToBottom());
+
+                // Build context from selected email
+                const ctx = {};
+                if (this.selectedEmail) {
+                    ctx.email_id = this.selectedEmail.id || this.selectedEmail.message_id || '';
+                    ctx.from = this.selectedEmail.from || '';
+                    ctx.subject = this.selectedEmail.subject || '';
+                    ctx.body = this.selectedEmail.body_plain
+                        ? this.selectedEmail.body_plain.slice(0, 2000)
+                        : '';
+                }
+
+                this.chatLoading = true;
+                try {
+                    const res = await fetch('/api/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message: text, context: ctx })
+                    });
+
+                    if (!res.ok) {
+                        const errData = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+                        throw new Error(errData.error || `HTTP ${res.status}`);
+                    }
+
+                    const data = await res.json();
+
+                    this.chatMessages.push({
+                        role: 'assistant',
+                        text: data.response || '(no response)',
+                        timestamp: this.formatTime(new Date()),
+                        suggestions: data.suggestions || []
+                    });
+                } catch (err) {
+                    this.chatError = `Error: ${err.message}`;
+                    // Also show as a message bubble
+                    this.chatMessages.push({
+                        role: 'assistant',
+                        text: `⚠️ ${err.message}`,
+                        timestamp: this.formatTime(new Date()),
+                        suggestions: []
+                    });
+                } finally {
+                    this.chatLoading = false;
+                    this.$nextTick(() => this.scrollChatToBottom());
+                }
+            },
+
+            async copyMessage(text) {
+                try {
+                    await navigator.clipboard.writeText(text);
+                    this.showToast('Copied to clipboard');
+                } catch (_) {
+                    this.showToast('Copy failed', 'error');
+                }
+            },
+
+            // ─────────────────────────────────────────────────────
+            // COMPOSE
+            // ─────────────────────────────────────────────────────
+
+            openCompose(type) {
+                this.composeType = type;
+                this.composeError = null;
+                this.composeData = { to: '', cc: '', subject: '', body: '' };
+
+                if (type === 'reply' && this.selectedEmail) {
+                    this.composeData.to = this.selectedEmail.from || '';
+                    const s = this.selectedEmail.subject || '';
+                    this.composeData.subject = s.toLowerCase().startsWith('re: ') ? s : `Re: ${s}`;
+                } else if (type === 'forward' && this.selectedEmail) {
+                    const s = this.selectedEmail.subject || '';
+                    this.composeData.subject = s.toLowerCase().startsWith('fwd: ') ? s : `Fwd: ${s}`;
+                }
+
+                this.composeOpen = true;
+            },
+
+            discardCompose() {
+                const dirty = this.composeData.to || this.composeData.body ||
+                              (this.composeType === 'compose' && this.composeData.subject);
+                if (dirty && !confirm('Discard this message?')) return;
+                this.composeOpen = false;
+                this.composeData = { to: '', cc: '', subject: '', body: '' };
+                this.composeError = null;
+            },
+
+            async sendCompose() {
+                if (!this.composeData.to.trim()) { this.composeError = 'Recipient is required.'; return; }
+                if (!this.composeData.subject.trim()) { this.composeError = 'Subject is required.'; return; }
+                if (!this.composeData.body.trim() && this.composeType !== 'forward') {
+                    this.composeError = 'Message body is required.';
+                    return;
+                }
+
+                this.composeSending = true;
+                this.composeError = null;
+
+                try {
+                    let url, payload;
+
+                    if (this.composeType === 'reply' && this.selectedEmailId) {
+                        url = `/api/gmail/messages/${this.selectedEmailId}/reply`;
+                        payload = {
+                            to: this.composeData.to,
+                            subject: this.composeData.subject,
+                            body_plain: this.composeData.body,
+                            cc: this.composeData.cc || null
+                        };
+                    } else if (this.composeType === 'forward' && this.selectedEmailId) {
+                        url = `/api/gmail/messages/${this.selectedEmailId}/forward`;
+                        payload = {
+                            to: this.composeData.to,
+                            cc: this.composeData.cc || null,
+                            body_plain: this.composeData.body
+                        };
+                    } else {
+                        url = '/api/gmail/messages/send';
+                        payload = {
+                            to: this.composeData.to,
+                            cc: this.composeData.cc || null,
+                            subject: this.composeData.subject,
+                            body_plain: this.composeData.body
+                        };
+                    }
+
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!res.ok) {
+                        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+                        throw new Error(err.error || `HTTP ${res.status}`);
+                    }
+
+                    const data = await res.json();
+                    this.composeOpen = false;
+                    this.composeData = { to: '', cc: '', subject: '', body: '' };
+
+                    const label = { reply: 'Reply', forward: 'Forward', compose: 'Email' }[this.composeType] || 'Email';
+                    this.showToast(`${label} sent!`);
+                } catch (err) {
+                    this.composeError = `Send failed: ${err.message}`;
+                } finally {
+                    this.composeSending = false;
+                }
+            },
+
+            // ─────────────────────────────────────────────────────
+            // TRAINING MODAL
+            // ─────────────────────────────────────────────────────
+
+            openTraining() {
+                this.trainingStep = 0;
+                this.trainingError = null;
+                if (this.selectedEmail) {
+                    this.training.fromPattern = this.selectedEmail.from || '';
+                    this.training.subjectKeywords = '';
+                }
+                this.trainingModalOpen = true;
+            },
+
+            resetTraining() {
+                this.trainingModalOpen = false;
+                this.trainingStep = 0;
+                this.trainingError = null;
+                this.training = {
                     fromPattern: '',
                     subjectKeywords: '',
                     primaryAction: 'file',
@@ -644,458 +1095,151 @@
                     hasCondition: false,
                     conditionKeywords: '',
                     exceptionAction: 'ticket'
-                },
-                composeOpen: false,
-                composeType: 'compose',   // 'compose' | 'reply' | 'forward'
-                composeData: { to: '', cc: '', subject: '', body: '' },
-                composeSending: false,
-                composeError: null,
-                mobileView: 'list',
-                toast: { visible: false, message: '' },
-                
-                // Computed: filtered emails
-                get filteredEmails() {
-                    if (!this.searchQuery) return this.emailList;
-                    const q = this.searchQuery.toLowerCase();
-                    return this.emailList.filter(e =>
-                        (e.from?.toLowerCase() || '').includes(q) ||
-                        (e.subject?.toLowerCase() || '').includes(q) ||
-                        (e.snippet?.toLowerCase() || '').includes(q)
-                    );
-                },
-                
-                // Format date for display
-                formatDate(dateStr) {
-                    if (!dateStr) return '';
+                };
+            },
+
+            canProceed() {
+                if (this.trainingStep === 0) return this.training.fromPattern.trim() !== '';
+                if (this.trainingStep === 1) return this.training.primaryAction !== '';
+                if (this.trainingStep === 3) return this.training.conditionKeywords.trim() !== '';
+                return true;
+            },
+
+            nextStep() {
+                if (!this.canProceed()) {
+                    this.trainingError = 'Please fill in the required fields.';
+                    return;
+                }
+                this.trainingError = null;
+                if (this.trainingStep === 2 && !this.training.hasCondition) {
+                    this.trainingStep = 5;
+                } else {
+                    this.trainingStep++;
+                }
+            },
+
+            previousStep() {
+                this.trainingError = null;
+                if (this.trainingStep === 5 && !this.training.hasCondition) {
+                    this.trainingStep = 2;
+                } else if (this.trainingStep > 0) {
+                    this.trainingStep--;
+                }
+            },
+
+            async saveRule() {
+                this.trainingSaving = true;
+                this.trainingError = null;
+                try {
+                    let conditionLogic = null;
+                    if (this.training.hasCondition && this.training.conditionKeywords) {
+                        conditionLogic = {
+                            type: 'keyword_match',
+                            field: 'body',
+                            keywords: this.training.conditionKeywords.split(',').map(k => k.trim()).filter(Boolean),
+                            match: 'any',
+                            case_sensitive: false
+                        };
+                    }
+
+                    const payload = {
+                        name: `${this.training.fromPattern} → ${this.training.primaryAction}`,
+                        sender_pattern: this.training.fromPattern,
+                        subject_keywords: this.training.subjectKeywords || null,
+                        primary_action: this.training.primaryAction,
+                        folder_target: this.training.folderTarget || null,
+                        forward_to: this.training.forwardTo || null,
+                        ticket_board: this.training.ticketBoard ? parseInt(this.training.ticketBoard) : null,
+                        exception_action: this.training.exceptionAction || null,
+                        condition_logic: conditionLogic,
+                        status: 'pending'
+                    };
+
+                    const res = await fetch('/api/rules/create', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!res.ok) {
+                        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+                        throw new Error(err.error || `HTTP ${res.status}`);
+                    }
+
+                    const data = await res.json();
+                    this.showToast(`Rule saved (pending)! ID: ${data.rule_id}`);
+                    this.resetTraining();
+                } catch (err) {
+                    this.trainingError = `Error: ${err.message}`;
+                } finally {
+                    this.trainingSaving = false;
+                }
+            },
+
+            // ─────────────────────────────────────────────────────
+            // KEYBOARD SHORTCUTS
+            // ─────────────────────────────────────────────────────
+
+            handleKeyboard(e) {
+                // Don't trigger shortcuts when typing in inputs
+                const tag = e.target.tagName.toLowerCase();
+                if (['input', 'textarea', 'select'].includes(tag)) return;
+
+                if (e.key === 'j') this.selectNext();
+                if (e.key === 'k') this.selectPrev();
+                if (e.key === 'e') this.archive();
+                if (e.key === 'c' && !this.composeOpen && !this.trainingModalOpen) this.openCompose('compose');
+                if (e.key === 'Escape') {
+                    if (this.composeOpen) this.discardCompose();
+                    else if (this.trainingModalOpen) this.resetTraining();
+                    else this.chatOpen = false;
+                }
+            },
+
+            selectNext() {
+                const idx = this.filteredEmails.findIndex(e => e.id === this.selectedEmailId);
+                if (idx >= 0 && idx < this.filteredEmails.length - 1) {
+                    this.selectEmail(this.filteredEmails[idx + 1]);
+                }
+            },
+
+            selectPrev() {
+                const idx = this.filteredEmails.findIndex(e => e.id === this.selectedEmailId);
+                if (idx > 0) {
+                    this.selectEmail(this.filteredEmails[idx - 1]);
+                }
+            },
+
+            // ─────────────────────────────────────────────────────
+            // UTILITIES
+            // ─────────────────────────────────────────────────────
+
+            formatDate(dateStr) {
+                if (!dateStr) return '';
+                try {
                     const date = new Date(dateStr);
-                    const today = new Date();
-                    const yesterday = new Date(today);
-                    yesterday.setDate(yesterday.getDate() - 1);
-                    
-                    if (date.toDateString() === today.toDateString()) {
+                    const now = new Date();
+                    const today = now.toDateString();
+                    const yesterday = new Date(now - 86400000).toDateString();
+
+                    if (date.toDateString() === today) {
                         return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-                    } else if (date.toDateString() === yesterday.toDateString()) {
+                    } else if (date.toDateString() === yesterday) {
                         return 'Yesterday';
                     } else {
                         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                     }
-                },
-                
-                // Initialize
-                async init() {
-                    await this.fetchEmails();
-                },
-                
-                // Fetch email list
-                async fetchEmails() {
-                    this.loadingList = true;
-                    try {
-                        const url = new URL('/api/gmail/messages', window.location.origin);
-                        url.searchParams.set('limit', '20');
-                        url.searchParams.set('folder', this.currentFolder);
-                        if (this.nextPageToken) {
-                            url.searchParams.set('pageToken', this.nextPageToken);
-                        }
-                        
-                        const res = await fetch(url);
-                        if (res.status === 401) {
-                            window.location.href = '/auth/google?redirect=' + encodeURIComponent(window.location.pathname);
-                            return;
-                        }
-                        if (!res.ok) throw new Error(`API error: ${res.status}`);
-                        
-                        const data = await res.json();
-                        
-                        // Deduplicate new emails
-                        const existingIds = new Set(this.emailList.map(e => e.id));
-                        const newEmails = data.messages.filter(e => !existingIds.has(e.id));
-                        
-                        this.emailList = [...this.emailList, ...newEmails];
-                        this.nextPageToken = data.nextPageToken || null;
-                        this.hasMore = !!data.nextPageToken;
-                    } catch (e) {
-                        this.errorMessage = `Failed to fetch emails: ${e.message}`;
-                    } finally {
-                        this.loadingList = false;
-                    }
-                },
-                
-                // Load more emails
-                async loadMore() {
-                    if (!this.hasMore || this.loadingList) return;
-                    await this.fetchEmails();
-                },
-                
-                // Select email
-                async selectEmail(email) {
-                    this.selectedEmailId = email.id;
-                    this.selectedEmail = email;
-                    
-                    // Check cache
-                    if (this.emailCache[email.id]) {
-                        this.selectedEmail = this.emailCache[email.id];
-                        return;
-                    }
-                    
-                    // Fetch full email
-                    this.loadingEmail = true;
-                    try {
-                        const res = await fetch(`/api/gmail/messages/${email.id}`);
-                        if (!res.ok) throw new Error(`Failed to fetch email: ${res.status}`);
-                        
-                        const full = await res.json();
-                        this.emailCache[email.id] = full;
-                        
-                        // Guard: user didn't click away
-                        if (this.selectedEmailId === email.id) {
-                            this.selectedEmail = full;
-                        }
-                    } catch (e) {
-                        this.errorMessage = e.message;
-                    } finally {
-                        this.loadingEmail = false;
-                    }
-                },
-                
-                // Search
-                search(query) {
-                    this.searchQuery = query;
-                },
-                
-                // Reset list (on folder change)
-                async resetList() {
-                    this.emailList = [];
-                    this.nextPageToken = null;
-                    this.hasMore = true;
-                    this.selectedEmailId = null;
-                    this.selectedEmail = null;
-                    this.emailCache = {};
-                    await this.fetchEmails();
-                },
-                
-                // Archive email
-                async archive() {
-                    if (!this.selectedEmailId) return;
-                    try {
-                        const res = await fetch(`/api/gmail/messages/${this.selectedEmailId}/archive`, { method: 'POST' });
-                        if (!res.ok) throw new Error(`Failed to archive: ${res.status}`);
-                        
-                        // Remove from list
-                        this.emailList = this.emailList.filter(e => e.id !== this.selectedEmailId);
-                        delete this.emailCache[this.selectedEmailId];
-                        this.selectedEmailId = null;
-                        this.selectedEmail = null;
-                        
-                        // Show toast
-                        this.toast = { visible: true, message: 'Email archived' };
-                        setTimeout(() => this.toast.visible = false, 3000);
-                    } catch (e) {
-                        this.errorMessage = e.message;
-                    }
-                },
-                
-                // Open compose modal
-                openCompose(type) {
-                    this.composeType = type;
-                    this.composeError = null;
-                    this.composeData = { to: '', cc: '', subject: '', body: '' };
-
-                    if (type === 'reply' && this.selectedEmail) {
-                        this.populateReplyFields();
-                    } else if (type === 'forward' && this.selectedEmail) {
-                        this.populateForwardFields();
-                    }
-
-                    this.composeOpen = true;
-                },
-
-                // Pre-fill reply fields
-                populateReplyFields() {
-                    const email = this.selectedEmail;
-                    if (!email) return;
-
-                    // To = original sender (strip display name if needed)
-                    this.composeData.to = email.from || '';
-
-                    // Subject: add "Re: " prefix if not already present
-                    const subj = email.subject || '';
-                    this.composeData.subject = subj.toLowerCase().startsWith('re: ')
-                        ? subj
-                        : `Re: ${subj}`;
-
-                    this.composeData.body = '';
-                },
-
-                // Pre-fill forward fields
-                populateForwardFields() {
-                    const email = this.selectedEmail;
-                    if (!email) return;
-
-                    this.composeData.to = '';
-
-                    // Subject: add "Fwd: " prefix if not already present
-                    const subj = email.subject || '';
-                    this.composeData.subject = subj.toLowerCase().startsWith('fwd: ')
-                        ? subj
-                        : `Fwd: ${subj}`;
-
-                    // Body: user types their intro; server appends the original below
-                    this.composeData.body = '';
-                },
-
-                // Discard compose (with confirmation if dirty)
-                discardCompose() {
-                    const hasContent = this.composeData.to || this.composeData.body ||
-                                       (this.composeType === 'compose' && this.composeData.subject);
-                    if (hasContent && !confirm('Discard this message?')) return;
-                    this.composeOpen = false;
-                    this.composeData = { to: '', cc: '', subject: '', body: '' };
-                    this.composeError = null;
-                },
-
-                // Send email (dispatches to correct endpoint based on composeType)
-                async sendCompose() {
-                    if (!this.composeData.to.trim()) {
-                        this.composeError = 'Recipient (To) is required.';
-                        return;
-                    }
-                    if (!this.composeData.subject.trim()) {
-                        this.composeError = 'Subject is required.';
-                        return;
-                    }
-                    if (!this.composeData.body.trim() && this.composeType !== 'forward') {
-                        this.composeError = 'Message body is required.';
-                        return;
-                    }
-
-                    this.composeSending = true;
-                    this.composeError = null;
-
-                    try {
-                        let url, payload;
-
-                        if (this.composeType === 'reply' && this.selectedEmailId) {
-                            url = `/api/gmail/messages/${this.selectedEmailId}/reply`;
-                            payload = {
-                                to: this.composeData.to,
-                                subject: this.composeData.subject,
-                                body_plain: this.composeData.body,
-                                cc: this.composeData.cc || null
-                            };
-                        } else if (this.composeType === 'forward' && this.selectedEmailId) {
-                            url = `/api/gmail/messages/${this.selectedEmailId}/forward`;
-                            payload = {
-                                to: this.composeData.to,
-                                cc: this.composeData.cc || null,
-                                body_plain: this.composeData.body  // user's intro; server appends original
-                            };
-                        } else {
-                            url = '/api/gmail/messages/send';
-                            payload = {
-                                to: this.composeData.to,
-                                cc: this.composeData.cc || null,
-                                subject: this.composeData.subject,
-                                body_plain: this.composeData.body
-                            };
-                        }
-
-                        const res = await fetch(url, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(payload)
-                        });
-
-                        if (!res.ok) {
-                            const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-                            throw new Error(err.error || `HTTP ${res.status}`);
-                        }
-
-                        const data = await res.json();
-
-                        // Success: close modal, show toast, return to reader
-                        this.composeOpen = false;
-                        this.composeData = { to: '', cc: '', subject: '', body: '' };
-
-                        const typeLabel = this.composeType === 'reply' ? 'Reply' :
-                                          this.composeType === 'forward' ? 'Forward' : 'Email';
-                        this.toast = { visible: true, message: `${typeLabel} sent! (ID: ${data.message_id})` };
-                        setTimeout(() => this.toast.visible = false, 4000);
-
-                    } catch (e) {
-                        this.composeError = `Failed to send: ${e.message}`;
-                    } finally {
-                        this.composeSending = false;
-                    }
-                },
-                
-                // Keyboard shortcuts
-                handleKeyboard(e) {
-                    if (e.key === 'j') this.selectNext();
-                    if (e.key === 'k') this.selectPrev();
-                    if (e.key === 'e') this.archive();
-                    if (e.key === 'Escape') {
-                        if (this.composeOpen) this.discardCompose();
-                        else this.chatOpen = false;
-                    }
-                    if (e.key === 'c' && !this.composeOpen) this.openCompose('compose');
-                },
-                
-                selectNext() {
-                    const idx = this.filteredEmails.findIndex(e => e.id === this.selectedEmailId);
-                    if (idx >= 0 && idx < this.filteredEmails.length - 1) {
-                        this.selectEmail(this.filteredEmails[idx + 1]);
-                    }
-                },
-                
-                selectPrev() {
-                    const idx = this.filteredEmails.findIndex(e => e.id === this.selectedEmailId);
-                    if (idx > 0) {
-                        this.selectEmail(this.filteredEmails[idx - 1]);
-                    }
-                },
-                
-                // Training modal methods
-                openTraining() {
-                    this.trainingModalOpen = true;
-                    this.trainingStep = 0;
-                    this.trainingError = null;
-                    
-                    // Pre-fill from selected email
-                    if (this.selectedEmail) {
-                        this.training.fromPattern = this.selectedEmail.from || '';
-                        this.training.subjectKeywords = '';
-                    }
-                },
-                
-                resetTraining() {
-                    this.trainingModalOpen = false;
-                    this.trainingStep = 0;
-                    this.trainingError = null;
-                    this.training = {
-                        fromPattern: '',
-                        subjectKeywords: '',
-                        primaryAction: 'file',
-                        folderTarget: 'Reports',
-                        forwardTo: '',
-                        ticketBoard: '1',
-                        hasCondition: false,
-                        conditionKeywords: '',
-                        exceptionAction: 'ticket'
-                    };
-                },
-                
-                canProceed() {
-                    if (this.trainingStep === 0) {
-                        return this.training.fromPattern.trim() !== '';
-                    }
-                    if (this.trainingStep === 1) {
-                        return this.training.primaryAction !== '';
-                    }
-                    if (this.trainingStep === 3) {
-                        return this.training.conditionKeywords.trim() !== '';
-                    }
-                    return true;
-                },
-                
-                nextStep() {
-                    if (!this.canProceed()) {
-                        this.trainingError = 'Please fill in required fields';
-                        return;
-                    }
-                    
-                    this.trainingError = null;
-                    
-                    if (this.trainingStep === 2 && !this.training.hasCondition) {
-                        this.trainingStep = 5;  // Skip Q3-Q4 if no condition
-                    } else if (this.trainingStep === 3) {
-                        this.trainingStep = 4;
-                    } else if (this.trainingStep === 4) {
-                        this.trainingStep = 5;
-                    } else {
-                        this.trainingStep++;
-                    }
-                },
-                
-                previousStep() {
-                    if (this.trainingStep === 5 && this.training.hasCondition) {
-                        this.trainingStep = 4;
-                    } else if (this.trainingStep === 4 && this.training.hasCondition) {
-                        this.trainingStep = 3;
-                    } else if (this.trainingStep === 4 && !this.training.hasCondition) {
-                        this.trainingStep = 2;
-                    } else if (this.trainingStep > 0) {
-                        this.trainingStep--;
-                    }
-                },
-                
-                async saveRule() {
-                    this.trainingSaving = true;
-                    this.trainingError = null;
-                    
-                    try {
-                        // Build condition_logic JSON
-                        let conditionLogic = null;
-                        if (this.training.hasCondition && this.training.conditionKeywords) {
-                            const keywords = this.training.conditionKeywords
-                                .split(',')
-                                .map(k => k.trim())
-                                .filter(k => k);
-                            
-                            conditionLogic = {
-                                type: 'keyword_match',
-                                field: 'body',
-                                keywords: keywords,
-                                match: 'any',
-                                case_sensitive: false
-                            };
-                        }
-                        
-                        // Build rule payload
-                        const payload = {
-                            name: `${this.training.fromPattern} - ${this.training.primaryAction}`,
-                            sender_pattern: this.training.fromPattern,
-                            subject_keywords: this.training.subjectKeywords || null,
-                            primary_action: this.training.primaryAction,
-                            folder_target: this.training.folderTarget || null,
-                            forward_to: this.training.forwardTo || null,
-                            ticket_board: this.training.ticketBoard ? parseInt(this.training.ticketBoard) : null,
-                            exception_action: this.training.exceptionAction || null,
-                            condition_logic: conditionLogic,
-                            status: 'pending'
-                        };
-                        
-                        // Save rule
-                        const res = await fetch('/api/rules/create', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(payload)
-                        });
-                        
-                        if (!res.ok) throw new Error(`Failed to create rule: ${res.status}`);
-                        
-                        const data = await res.json();
-                        
-                        // Success
-                        this.toast = { 
-                            visible: true, 
-                            message: `Rule saved as pending! ID: ${data.rule_id}` 
-                        };
-                        setTimeout(() => this.toast.visible = false, 5000);
-                        
-                        this.resetTraining();
-                    } catch (e) {
-                        this.trainingError = `Error: ${e.message}`;
-                    } finally {
-                        this.trainingSaving = false;
-                    }
-                },
-                
-                // Init on load
-                init() {
-                    this.fetchEmails();
+                } catch (_) {
+                    return dateStr;
                 }
+            },
+
+            showToast(message, type = 'success') {
+                this.toast = { visible: true, message, type };
+                setTimeout(() => { this.toast.visible = false; }, type === 'error' ? 6000 : 3000);
             }
-        }
+        };
+    }
     </script>
 </body>
 </html>

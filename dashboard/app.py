@@ -42,6 +42,7 @@ import logging
 from pathlib import Path
 from datetime import datetime
 
+import requests as http_requests
 from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
 
@@ -145,6 +146,63 @@ def health_check():
     
     status_code = 200 if health['status'] == 'healthy' else 503
     return jsonify(health), status_code
+
+# ============================================================================
+# CHAT PROXY ENDPOINT
+# ============================================================================
+
+@app.route('/api/chat', methods=['POST'])
+def chat_proxy():
+    """
+    Proxy chat messages to the OpenClaw AI endpoint.
+    Accepts: { "message": "...", "context": { email_id, from, subject, body } }
+    Returns: { "response": "...", "confidence": 0.95, "suggestions": [...] }
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        message = data.get('message', '').strip()
+        if not message:
+            return jsonify({'error': 'message is required'}), 400
+
+        # Forward to OpenClaw chat endpoint
+        openclaw_url = 'http://localhost:3000/chat'
+        payload = {
+            'message': message,
+            'context': data.get('context', {})
+        }
+
+        try:
+            resp = http_requests.post(
+                openclaw_url,
+                json=payload,
+                timeout=30
+            )
+            resp.raise_for_status()
+            result = resp.json()
+            return jsonify(result), 200
+
+        except http_requests.exceptions.ConnectionError:
+            # OpenClaw not running – return a graceful fallback
+            return jsonify({
+                'response': (
+                    "I'm not able to connect to the AI backend right now. "
+                    "Please make sure the OpenClaw service is running on port 3000."
+                ),
+                'confidence': 0,
+                'suggestions': []
+            }), 200
+
+        except http_requests.exceptions.Timeout:
+            return jsonify({'error': 'AI backend timed out'}), 504
+
+        except http_requests.exceptions.HTTPError as e:
+            logger.error(f"OpenClaw HTTP error: {e}")
+            return jsonify({'error': f'AI backend error: {e}'}), 502
+
+    except Exception as e:
+        logger.error(f"Chat proxy error: {e}")
+        return jsonify({'error': str(e)}), 500
+
 
 # ============================================================================
 # ROUTES
