@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gmail Automation Client</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        /* Skeleton loader animation */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .animate-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        /* Smooth transitions */
+        * {
+            transition-property: grid-template-columns;
+            transition-duration: 300ms;
+        }
+    </style>
+</head>
+<body class="bg-white text-gray-800">
+    <!-- Gmail Client Container -->
+    <div x-data="gmailClient()" @keydown.document="handleKeyboard" class="h-screen flex flex-col">
+        
+        <!-- Desktop Three-Panel Layout -->
+        <div class="hidden md:grid flex-1 overflow-hidden" 
+             :class="chatOpen ? 'grid-cols-[20%_40%_40%]' : 'grid-cols-[20%_80%_0%]'"
+             style="grid-template-rows: 1fr;">
+            
+            <!-- ============= EMAIL LIST PANEL (Left, 20%) ============= -->
+            <div class="border-r border-gray-200 flex flex-col bg-white">
+                
+                <!-- Search & Folder Bar -->
+                <div class="p-4 border-b border-gray-200">
+                    <input x-model="searchQuery" 
+                           @input="search($event.target.value)"
+                           type="text" 
+                           placeholder="Search emails..." 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <select x-model="currentFolder" 
+                            @change="resetList()"
+                            class="w-full mt-2 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none">
+                        <option value="INBOX">📥 Inbox</option>
+                        <option value="SENT">📤 Sent</option>
+                        <option value="DRAFT">✏️ Draft</option>
+                    </select>
+                </div>
+                
+                <!-- Email List -->
+                <div class="flex-1 overflow-y-auto">
+                    <!-- Loading Skeleton -->
+                    <div x-show="loadingList && emailList.length === 0" class="p-4 space-y-4">
+                        <template x-for="i in 5" :key="i">
+                            <div class="h-20 bg-gray-200 rounded animate-pulse"></div>
+                        </template>
+                    </div>
+                    
+                    <!-- Email Items -->
+                    <template x-for="email in filteredEmails" :key="email.id">
+                        <div @click="selectEmail(email)"
+                             :class="selectedEmailId === email.id ? 'bg-blue-50 border-l-4 border-blue-500' : 'hover:bg-gray-50'"
+                             class="p-3 border-b border-gray-200 cursor-pointer transition">
+                            <div class="font-semibold text-sm truncate" x-text="email.from"></div>
+                            <div class="text-gray-600 text-xs truncate" x-text="email.subject"></div>
+                            <div class="text-gray-400 text-xs mt-1 truncate" x-text="email.snippet"></div>
+                            <div class="text-gray-400 text-xs mt-1" x-text="formatDate(email.date)"></div>
+                        </div>
+                    </template>
+                    
+                    <!-- No emails message -->
+                    <div x-show="!loadingList && filteredEmails.length === 0" class="p-4 text-center text-gray-500">
+                        No emails found
+                    </div>
+                </div>
+                
+                <!-- Load More Button -->
+                <div x-show="hasMore" class="p-3 border-t border-gray-200">
+                    <button @click="loadMore()" 
+                            :disabled="loadingList"
+                            :class="loadingList ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'"
+                            class="w-full py-2 rounded-lg text-white text-sm font-semibold transition">
+                        <span x-show="!loadingList">Load More</span>
+                        <span x-show="loadingList">Loading...</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- ============= EMAIL READER PANEL (Center, 40-80%) ============= -->
+            <div class="bg-white flex flex-col overflow-hidden">
+                
+                <!-- Email Header & Actions -->
+                <div class="border-b border-gray-200 p-4 flex-shrink-0">
+                    <div x-show="!selectedEmail" class="text-center text-gray-400">
+                        Select an email to read
+                    </div>
+                    
+                    <div x-show="selectedEmail" class="space-y-3">
+                        <!-- Subject and From -->
+                        <div>
+                            <h2 class="text-xl font-bold" x-text="selectedEmail?.subject"></h2>
+                            <p class="text-sm text-gray-600 mt-1">
+                                <span class="font-semibold" x-text="selectedEmail?.from"></span>
+                                <span class="text-gray-400" x-text="'→ ' + selectedEmail?.to"></span>
+                            </p>
+                            <p class="text-xs text-gray-400 mt-1" x-text="selectedEmail?.date"></p>
+                        </div>
+                        
+                        <!-- Action Buttons -->
+                        <div class="flex gap-2 pt-2">
+                            <button @click="openCompose('reply')" 
+                                    class="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded transition">
+                                Reply
+                            </button>
+                            <button @click="openCompose('forward')" 
+                                    class="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded transition">
+                                Forward
+                            </button>
+                            <button @click="archive()" 
+                                    class="px-3 py-1 bg-gray-300 hover:bg-gray-400 text-gray-800 text-sm rounded transition">
+                                Archive
+                            </button>
+                            <button @click="trainingModalOpen = true" 
+                                    class="px-3 py-1 bg-green-500 hover:bg-green-600 text-white text-sm rounded transition">
+                                Train
+                            </button>
+                            <button @click="chatOpen = true" 
+                                    class="px-3 py-1 bg-purple-500 hover:bg-purple-600 text-white text-sm rounded transition">
+                                Chat
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Email Body (iframe) -->
+                <div class="flex-1 overflow-y-auto p-4">
+                    <div x-show="!selectedEmail" class="text-center text-gray-400 mt-8">
+                        (No email selected)
+                    </div>
+                    
+                    <div x-show="loadingEmail" class="text-center text-gray-400 mt-8">
+                        <p>Loading email...</p>
+                    </div>
+                    
+                    <div x-show="selectedEmail && !loadingEmail" class="bg-white">
+                        <!-- Email body rendered in iframe for XSS safety -->
+                        <iframe :srcdoc="selectedEmail?.body_html || selectedEmail?.body_plain"
+                                sandbox
+                                class="w-full h-full border-0 rounded"
+                                style="min-height: 400px; border: 1px solid #e5e7eb;"></iframe>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- ============= CHAT PANEL (Right, 20%, Hidden by default) ============= -->
+            <div x-show="chatOpen" class="border-l border-gray-200 flex flex-col bg-white">
+                
+                <!-- Chat Header -->
+                <div class="p-4 border-b border-gray-200 flex justify-between items-center flex-shrink-0">
+                    <h3 class="font-semibold">AI Assistant</h3>
+                    <button @click="chatOpen = false" class="text-gray-400 hover:text-gray-600">✕</button>
+                </div>
+                
+                <!-- Chat Context -->
+                <div x-show="selectedEmail" class="p-4 bg-gray-50 border-b border-gray-200 text-sm flex-shrink-0">
+                    <p class="font-semibold text-gray-700">About this email:</p>
+                    <p class="text-gray-600 text-xs mt-2">From: <span x-text="selectedEmail?.from"></span></p>
+                    <p class="text-gray-600 text-xs">Subject: <span x-text="selectedEmail?.subject"></span></p>
+                </div>
+                
+                <!-- Chat Messages -->
+                <div class="flex-1 overflow-y-auto p-4 space-y-3">
+                    <div class="text-sm text-gray-500">
+                        <p>Chat with Miles (AI) about this email.</p>
+                        <p class="text-xs mt-2">Ask: "Why was this filed?" or "Should I change the rule?"</p>
+                    </div>
+                </div>
+                
+                <!-- Chat Input -->
+                <div class="p-4 border-t border-gray-200 flex-shrink-0">
+                    <input type="text" 
+                           placeholder="Ask a question..." 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
+                </div>
+            </div>
+        </div>
+        
+        <!-- ============= MOBILE TAB VIEW ============= -->
+        <div class="md:hidden flex flex-col flex-1 overflow-hidden">
+            
+            <!-- Mobile Tab Buttons -->
+            <div class="border-b border-gray-200 flex gap-0 bg-white">
+                <button @click="mobileView = 'list'"
+                        :class="mobileView === 'list' ? 'border-b-2 border-blue-500 text-blue-500' : 'text-gray-600'"
+                        class="flex-1 py-3 text-sm font-semibold transition">
+                    📧 List
+                </button>
+                <button @click="mobileView = 'reader'"
+                        :class="mobileView === 'reader' ? 'border-b-2 border-blue-500 text-blue-500' : 'text-gray-600'"
+                        class="flex-1 py-3 text-sm font-semibold transition">
+                    📖 Reader
+                </button>
+                <button @click="mobileView = 'chat'"
+                        :class="mobileView === 'chat' ? 'border-b-2 border-blue-500 text-blue-500' : 'text-gray-600'"
+                        class="flex-1 py-3 text-sm font-semibold transition">
+                    💬 Chat
+                </button>
+            </div>
+            
+            <!-- Mobile Content (single panel at a time) -->
+            <div class="flex-1 overflow-y-auto">
+                <!-- List View -->
+                <div x-show="mobileView === 'list'" class="space-y-0">
+                    <!-- Search -->
+                    <div class="p-3 border-b border-gray-200 sticky top-0 bg-white">
+                        <input x-model="searchQuery" 
+                               @input="search($event.target.value)"
+                               type="text" 
+                               placeholder="Search..." 
+                               class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <!-- Email List Items -->
+                    <template x-for="email in filteredEmails" :key="email.id">
+                        <div @click="selectEmail(email); mobileView = 'reader'"
+                             class="p-3 border-b border-gray-200 cursor-pointer active:bg-gray-100">
+                            <div class="font-semibold text-sm truncate" x-text="email.from"></div>
+                            <div class="text-gray-600 text-xs truncate" x-text="email.subject"></div>
+                            <div class="text-gray-400 text-xs mt-1" x-text="formatDate(email.date)"></div>
+                        </div>
+                    </template>
+                </div>
+                
+                <!-- Reader View -->
+                <div x-show="mobileView === 'reader'" class="h-full flex flex-col">
+                    <div x-show="!selectedEmail" class="p-4 text-center text-gray-400">
+                        Select an email first
+                    </div>
+                    <div x-show="selectedEmail" class="flex-1 flex flex-col overflow-hidden">
+                        <!-- Header -->
+                        <div class="p-3 border-b border-gray-200 flex-shrink-0">
+                            <h3 class="font-bold text-sm" x-text="selectedEmail?.subject"></h3>
+                            <p class="text-xs text-gray-600 mt-1" x-text="selectedEmail?.from"></p>
+                            <div class="flex gap-2 mt-3">
+                                <button @click="openCompose('reply')" class="flex-1 py-1 bg-blue-500 text-white text-xs rounded">Reply</button>
+                                <button @click="archive()" class="flex-1 py-1 bg-gray-300 text-xs rounded">Archive</button>
+                                <button @click="trainingModalOpen = true" class="flex-1 py-1 bg-green-500 text-white text-xs rounded">Train</button>
+                            </div>
+                        </div>
+                        <!-- Body -->
+                        <div class="flex-1 overflow-y-auto p-3">
+                            <iframe :srcdoc="selectedEmail?.body_html || selectedEmail?.body_plain"
+                                    sandbox
+                                    class="w-full h-full border-0"
+                                    style="min-height: 300px;"></iframe>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Chat View -->
+                <div x-show="mobileView === 'chat'" class="flex flex-col h-full">
+                    <div class="p-4 bg-gray-50 border-b border-gray-200 text-sm flex-shrink-0">
+                        <p x-show="selectedEmail" class="text-gray-600 text-xs">
+                            Email: <span x-text="selectedEmail?.subject"></span>
+                        </p>
+                        <p x-show="!selectedEmail" class="text-gray-400">Select an email first</p>
+                    </div>
+                    <div class="flex-1 p-4 text-center text-gray-500 text-sm">
+                        <p>Chat coming soon...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- ============= TOAST NOTIFICATIONS ============= -->
+        <div x-show="toast.visible" 
+             class="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 bg-green-500 text-white p-3 rounded-lg shadow-lg flex justify-between items-center">
+            <span x-text="toast.message"></span>
+            <button @click="toast.visible = false" class="ml-2 font-bold">✕</button>
+        </div>
+        
+        <!-- ============= ERROR MESSAGE ============= -->
+        <div x-show="errorMessage" 
+             class="fixed top-4 left-4 right-4 md:left-auto md:right-4 md:w-96 bg-red-500 text-white p-3 rounded-lg shadow-lg flex justify-between items-center">
+            <span x-text="errorMessage"></span>
+            <button @click="errorMessage = null" class="ml-2 font-bold">✕</button>
+        </div>
+    </div>
+    
+    <!-- Alpine.js Script -->
+    <script>
+        function gmailClient() {
+            return {
+                // State
+                selectedEmailId: null,
+                selectedEmail: null,
+                emailList: [],
+                emailCache: {},
+                filteredEmailsComputed: [],
+                nextPageToken: null,
+                hasMore: true,
+                loadingList: false,
+                loadingEmail: false,
+                errorMessage: null,
+                currentFolder: 'INBOX',
+                searchQuery: '',
+                chatOpen: false,
+                trainingModalOpen: false,
+                composeOpen: false,
+                mobileView: 'list',
+                toast: { visible: false, message: '' },
+                
+                // Computed: filtered emails
+                get filteredEmails() {
+                    if (!this.searchQuery) return this.emailList;
+                    const q = this.searchQuery.toLowerCase();
+                    return this.emailList.filter(e =>
+                        (e.from?.toLowerCase() || '').includes(q) ||
+                        (e.subject?.toLowerCase() || '').includes(q) ||
+                        (e.snippet?.toLowerCase() || '').includes(q)
+                    );
+                },
+                
+                // Format date for display
+                formatDate(dateStr) {
+                    if (!dateStr) return '';
+                    const date = new Date(dateStr);
+                    const today = new Date();
+                    const yesterday = new Date(today);
+                    yesterday.setDate(yesterday.getDate() - 1);
+                    
+                    if (date.toDateString() === today.toDateString()) {
+                        return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                    } else if (date.toDateString() === yesterday.toDateString()) {
+                        return 'Yesterday';
+                    } else {
+                        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    }
+                },
+                
+                // Initialize
+                async init() {
+                    await this.fetchEmails();
+                },
+                
+                // Fetch email list
+                async fetchEmails() {
+                    this.loadingList = true;
+                    try {
+                        const url = new URL('/api/gmail/messages', window.location.origin);
+                        url.searchParams.set('limit', '20');
+                        url.searchParams.set('folder', this.currentFolder);
+                        if (this.nextPageToken) {
+                            url.searchParams.set('pageToken', this.nextPageToken);
+                        }
+                        
+                        const res = await fetch(url);
+                        if (res.status === 401) {
+                            window.location.href = '/auth/google?redirect=' + encodeURIComponent(window.location.pathname);
+                            return;
+                        }
+                        if (!res.ok) throw new Error(`API error: ${res.status}`);
+                        
+                        const data = await res.json();
+                        
+                        // Deduplicate new emails
+                        const existingIds = new Set(this.emailList.map(e => e.id));
+                        const newEmails = data.messages.filter(e => !existingIds.has(e.id));
+                        
+                        this.emailList = [...this.emailList, ...newEmails];
+                        this.nextPageToken = data.nextPageToken || null;
+                        this.hasMore = !!data.nextPageToken;
+                    } catch (e) {
+                        this.errorMessage = `Failed to fetch emails: ${e.message}`;
+                    } finally {
+                        this.loadingList = false;
+                    }
+                },
+                
+                // Load more emails
+                async loadMore() {
+                    if (!this.hasMore || this.loadingList) return;
+                    await this.fetchEmails();
+                },
+                
+                // Select email
+                async selectEmail(email) {
+                    this.selectedEmailId = email.id;
+                    this.selectedEmail = email;
+                    
+                    // Check cache
+                    if (this.emailCache[email.id]) {
+                        this.selectedEmail = this.emailCache[email.id];
+                        return;
+                    }
+                    
+                    // Fetch full email
+                    this.loadingEmail = true;
+                    try {
+                        const res = await fetch(`/api/gmail/messages/${email.id}`);
+                        if (!res.ok) throw new Error(`Failed to fetch email: ${res.status}`);
+                        
+                        const full = await res.json();
+                        this.emailCache[email.id] = full;
+                        
+                        // Guard: user didn't click away
+                        if (this.selectedEmailId === email.id) {
+                            this.selectedEmail = full;
+                        }
+                    } catch (e) {
+                        this.errorMessage = e.message;
+                    } finally {
+                        this.loadingEmail = false;
+                    }
+                },
+                
+                // Search
+                search(query) {
+                    this.searchQuery = query;
+                },
+                
+                // Reset list (on folder change)
+                async resetList() {
+                    this.emailList = [];
+                    this.nextPageToken = null;
+                    this.hasMore = true;
+                    this.selectedEmailId = null;
+                    this.selectedEmail = null;
+                    this.emailCache = {};
+                    await this.fetchEmails();
+                },
+                
+                // Archive email
+                async archive() {
+                    if (!this.selectedEmailId) return;
+                    try {
+                        const res = await fetch(`/api/gmail/messages/${this.selectedEmailId}/archive`, { method: 'POST' });
+                        if (!res.ok) throw new Error(`Failed to archive: ${res.status}`);
+                        
+                        // Remove from list
+                        this.emailList = this.emailList.filter(e => e.id !== this.selectedEmailId);
+                        delete this.emailCache[this.selectedEmailId];
+                        this.selectedEmailId = null;
+                        this.selectedEmail = null;
+                        
+                        // Show toast
+                        this.toast = { visible: true, message: 'Email archived' };
+                        setTimeout(() => this.toast.visible = false, 3000);
+                    } catch (e) {
+                        this.errorMessage = e.message;
+                    }
+                },
+                
+                // Open compose (reply/forward)
+                openCompose(type) {
+                    this.composeOpen = true;
+                    // TODO: Implement compose modal (Day 5)
+                    alert(`${type} compose coming soon...`);
+                },
+                
+                // Keyboard shortcuts
+                handleKeyboard(e) {
+                    if (e.key === 'j') this.selectNext();
+                    if (e.key === 'k') this.selectPrev();
+                    if (e.key === 'e') this.archive();
+                    if (e.key === 'Escape') this.chatOpen = false;
+                },
+                
+                selectNext() {
+                    const idx = this.filteredEmails.findIndex(e => e.id === this.selectedEmailId);
+                    if (idx >= 0 && idx < this.filteredEmails.length - 1) {
+                        this.selectEmail(this.filteredEmails[idx + 1]);
+                    }
+                },
+                
+                selectPrev() {
+                    const idx = this.filteredEmails.findIndex(e => e.id === this.selectedEmailId);
+                    if (idx > 0) {
+                        this.selectEmail(this.filteredEmails[idx - 1]);
+                    }
+                },
+                
+                // Init on load
+                init() {
+                    this.fetchEmails();
+                }
+            }
+        }
+    </script>
+</body>
+</html>
