@@ -47,6 +47,7 @@ from flask_cors import CORS
 
 # Import API blueprints
 from api.gmail import gmail_bp
+from api.rules import rules_bp
 
 # Setup logging
 logging.basicConfig(
@@ -64,6 +65,7 @@ CORS(app)
 
 # Register blueprints
 app.register_blueprint(gmail_bp)
+app.register_blueprint(rules_bp)
 
 # Paths
 BASE_DIR = Path(__file__).parent.parent

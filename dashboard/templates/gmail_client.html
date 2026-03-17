@@ -274,6 +274,229 @@
             </div>
         </div>
         
+        <!-- ============= TRAINING MODAL ============= -->
+        <div x-show="trainingModalOpen" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-96 flex flex-col">
+                
+                <!-- Modal Header -->
+                <div class="p-4 border-b border-gray-200 flex justify-between items-center flex-shrink-0">
+                    <h2 class="text-xl font-bold">Train a New Rule</h2>
+                    <button @click="resetTraining()" class="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
+                </div>
+                
+                <!-- Modal Body (scrollable) -->
+                <div class="flex-1 overflow-y-auto p-6">
+                    
+                    <!-- Q0: Which emails should this apply to? -->
+                    <div x-show="trainingStep === 0" class="space-y-4">
+                        <h3 class="text-lg font-semibold">Q0: Which emails should this apply to?</h3>
+                        <p class="text-sm text-gray-600">Select what identifies these emails</p>
+                        
+                        <div class="space-y-3">
+                            <div>
+                                <label class="block text-sm font-semibold mb-1">From (sender):</label>
+                                <input x-model="training.fromPattern" 
+                                       placeholder="e.g., reports@positive-electric.com"
+                                       type="text"
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <p class="text-xs text-gray-500 mt-1">Pre-filled from selected email</p>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-semibold mb-1">Subject contains (optional):</label>
+                                <input x-model="training.subjectKeywords" 
+                                       placeholder="e.g., report, status, weekly"
+                                       type="text"
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <p class="text-xs text-gray-500 mt-1">Comma-separated keywords</p>
+                            </div>
+                        </div>
+                        
+                        <div class="text-sm text-red-500" x-show="trainingError" x-text="trainingError"></div>
+                    </div>
+                    
+                    <!-- Q1: What do you do? -->
+                    <div x-show="trainingStep === 1" class="space-y-4">
+                        <h3 class="text-lg font-semibold">Q1: What do you do with this email?</h3>
+                        
+                        <div class="grid grid-cols-2 gap-2">
+                            <button @click="training.primaryAction = 'do_nothing'" 
+                                    :class="training.primaryAction === 'do_nothing' ? 'bg-blue-500 text-white' : 'bg-gray-200'"
+                                    class="py-2 px-3 rounded-lg text-sm font-semibold transition">
+                                Do Nothing
+                            </button>
+                            <button @click="training.primaryAction = 'file'" 
+                                    :class="training.primaryAction === 'file' ? 'bg-blue-500 text-white' : 'bg-gray-200'"
+                                    class="py-2 px-3 rounded-lg text-sm font-semibold transition">
+                                File It
+                            </button>
+                            <button @click="training.primaryAction = 'archive'" 
+                                    :class="training.primaryAction === 'archive' ? 'bg-blue-500 text-white' : 'bg-gray-200'"
+                                    class="py-2 px-3 rounded-lg text-sm font-semibold transition">
+                                Archive
+                            </button>
+                            <button @click="training.primaryAction = 'delete'" 
+                                    :class="training.primaryAction === 'delete' ? 'bg-blue-500 text-white' : 'bg-gray-200'"
+                                    class="py-2 px-3 rounded-lg text-sm font-semibold transition">
+                                Delete
+                            </button>
+                            <button @click="training.primaryAction = 'forward'" 
+                                    :class="training.primaryAction === 'forward' ? 'bg-blue-500 text-white' : 'bg-gray-200'"
+                                    class="py-2 px-3 rounded-lg text-sm font-semibold transition">
+                                Forward
+                            </button>
+                            <button @click="training.primaryAction = 'ticket'" 
+                                    :class="training.primaryAction === 'ticket' ? 'bg-blue-500 text-white' : 'bg-gray-200'"
+                                    class="py-2 px-3 rounded-lg text-sm font-semibold transition">
+                                CW Ticket
+                            </button>
+                        </div>
+                        
+                        <!-- Conditional fields based on action -->
+                        <div x-show="training.primaryAction === 'file'" class="mt-4">
+                            <label class="block text-sm font-semibold mb-1">File to folder:</label>
+                            <input x-model="training.folderTarget" 
+                                   placeholder="e.g., Reports"
+                                   type="text"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        
+                        <div x-show="training.primaryAction === 'forward'" class="mt-4">
+                            <label class="block text-sm font-semibold mb-1">Forward to:</label>
+                            <input x-model="training.forwardTo" 
+                                   placeholder="e.g., john@example.com"
+                                   type="email"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        
+                        <div x-show="training.primaryAction === 'ticket'" class="mt-4">
+                            <label class="block text-sm font-semibold mb-1">Board:</label>
+                            <select x-model="training.ticketBoard"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="">Select board...</option>
+                                <option value="1">IT Support</option>
+                                <option value="2">Projects</option>
+                                <option value="3">Alerts</option>
+                            </select>
+                        </div>
+                        
+                        <div class="text-sm text-red-500" x-show="trainingError" x-text="trainingError"></div>
+                    </div>
+                    
+                    <!-- Q2: Does this sometimes need different handling? -->
+                    <div x-show="trainingStep === 2" class="space-y-4">
+                        <h3 class="text-lg font-semibold">Q2: Does this type sometimes need different handling?</h3>
+                        <p class="text-sm text-gray-600">e.g., file normally, but ticket if there's an error</p>
+                        
+                        <div class="flex gap-4">
+                            <button @click="training.hasCondition = false; trainingStep = 4" 
+                                    class="flex-1 py-3 px-4 bg-gray-200 hover:bg-gray-300 rounded-lg font-semibold transition">
+                                No
+                            </button>
+                            <button @click="training.hasCondition = true; trainingStep = 3" 
+                                    class="flex-1 py-3 px-4 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold transition">
+                                Yes
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Q3: What indicates the difference? -->
+                    <div x-show="trainingStep === 3" class="space-y-4">
+                        <h3 class="text-lg font-semibold">Q3: What keywords indicate the difference?</h3>
+                        <p class="text-sm text-gray-600">e.g., ERROR, FAILED, CRITICAL, URGENT</p>
+                        
+                        <input x-model="training.conditionKeywords" 
+                               placeholder="Comma-separated keywords..."
+                               type="text"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        
+                        <div class="text-sm text-red-500" x-show="trainingError" x-text="trainingError"></div>
+                    </div>
+                    
+                    <!-- Q4: What happens then? -->
+                    <div x-show="trainingStep === 4" class="space-y-4">
+                        <h3 class="text-lg font-semibold">Q4: When you see that indicator, what happens?</h3>
+                        <p class="text-sm text-gray-600" x-show="training.hasCondition">e.g., create a ticket instead of filing</p>
+                        
+                        <div class="grid grid-cols-2 gap-2" x-show="training.hasCondition">
+                            <button @click="training.exceptionAction = 'file'" 
+                                    :class="training.exceptionAction === 'file' ? 'bg-blue-500 text-white' : 'bg-gray-200'"
+                                    class="py-2 px-3 rounded-lg text-sm font-semibold transition">
+                                File
+                            </button>
+                            <button @click="training.exceptionAction = 'ticket'" 
+                                    :class="training.exceptionAction === 'ticket' ? 'bg-blue-500 text-white' : 'bg-gray-200'"
+                                    class="py-2 px-3 rounded-lg text-sm font-semibold transition">
+                                Ticket
+                            </button>
+                            <button @click="training.exceptionAction = 'forward'" 
+                                    :class="training.exceptionAction === 'forward' ? 'bg-blue-500 text-white' : 'bg-gray-200'"
+                                    class="py-2 px-3 rounded-lg text-sm font-semibold transition">
+                                Forward
+                            </button>
+                            <button @click="training.exceptionAction = 'archive'" 
+                                    :class="training.exceptionAction === 'archive' ? 'bg-blue-500 text-white' : 'bg-gray-200'"
+                                    class="py-2 px-3 rounded-lg text-sm font-semibold transition">
+                                Archive
+                            </button>
+                        </div>
+                        
+                        <p class="text-sm text-gray-600 mt-4" x-show="!training.hasCondition">Ready to save rule?</p>
+                    </div>
+                    
+                    <!-- Q5: Review & Confirm -->
+                    <div x-show="trainingStep === 5" class="space-y-4">
+                        <h3 class="text-lg font-semibold">Review Your Rule</h3>
+                        <div class="bg-gray-50 p-4 rounded-lg space-y-2 text-sm">
+                            <p><span class="font-semibold">Rule Name:</span> <span x-text="training.fromPattern + ' - ' + training.primaryAction"></span></p>
+                            <p><span class="font-semibold">From:</span> <span x-text="training.fromPattern || '(any)'"></span></p>
+                            <p><span class="font-semibold">Subject:</span> <span x-text="training.subjectKeywords || '(any)'"></span></p>
+                            <p><span class="font-semibold">Primary Action:</span> <span x-text="training.primaryAction"></span></p>
+                            <p x-show="training.folderTarget"><span class="font-semibold">Folder:</span> <span x-text="training.folderTarget"></span></p>
+                            <p x-show="training.forwardTo"><span class="font-semibold">Forward to:</span> <span x-text="training.forwardTo"></span></p>
+                            <p x-show="training.hasCondition"><span class="font-semibold">If contains:</span> <span x-text="training.conditionKeywords"></span></p>
+                            <p x-show="training.hasCondition"><span class="font-semibold">Then:</span> <span x-text="training.exceptionAction"></span></p>
+                        </div>
+                        <p class="text-sm text-gray-600">This rule will start as <strong>pending</strong>. You'll activate it in the Audit tab.</p>
+                        <div class="text-sm text-red-500" x-show="trainingError" x-text="trainingError"></div>
+                    </div>
+                </div>
+                
+                <!-- Modal Footer (buttons) -->
+                <div class="p-4 border-t border-gray-200 flex gap-3 justify-between flex-shrink-0">
+                    <button @click="previousStep()" 
+                            x-show="trainingStep > 0"
+                            class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition">
+                        Back
+                    </button>
+                    
+                    <div class="flex gap-3">
+                        <button @click="resetTraining()" 
+                                class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition">
+                            Cancel
+                        </button>
+                        
+                        <button @click="nextStep()" 
+                                x-show="trainingStep < 5"
+                                :disabled="!canProceed()"
+                                :class="!canProceed() ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'"
+                                class="px-4 py-2 text-white rounded-lg transition">
+                            Next
+                        </button>
+                        
+                        <button @click="saveRule()" 
+                                x-show="trainingStep === 5"
+                                :disabled="trainingSaving"
+                                :class="trainingSaving ? 'bg-gray-300 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'"
+                                class="px-4 py-2 text-white rounded-lg transition">
+                            <span x-show="!trainingSaving">Save Rule</span>
+                            <span x-show="trainingSaving">Saving...</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
         <!-- ============= TOAST NOTIFICATIONS ============= -->
         <div x-show="toast.visible" 
              class="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 bg-green-500 text-white p-3 rounded-lg shadow-lg flex justify-between items-center">
@@ -308,6 +531,20 @@
                 searchQuery: '',
                 chatOpen: false,
                 trainingModalOpen: false,
+                trainingStep: 0,
+                trainingSaving: false,
+                trainingError: null,
+                training: {
+                    fromPattern: '',
+                    subjectKeywords: '',
+                    primaryAction: 'file',
+                    folderTarget: 'Reports',
+                    forwardTo: '',
+                    ticketBoard: '1',
+                    hasCondition: false,
+                    conditionKeywords: '',
+                    exceptionAction: 'ticket'
+                },
                 composeOpen: false,
                 mobileView: 'list',
                 toast: { visible: false, message: '' },
@@ -479,6 +716,142 @@
                     const idx = this.filteredEmails.findIndex(e => e.id === this.selectedEmailId);
                     if (idx > 0) {
                         this.selectEmail(this.filteredEmails[idx - 1]);
+                    }
+                },
+                
+                // Training modal methods
+                openTraining() {
+                    this.trainingModalOpen = true;
+                    this.trainingStep = 0;
+                    this.trainingError = null;
+                    
+                    // Pre-fill from selected email
+                    if (this.selectedEmail) {
+                        this.training.fromPattern = this.selectedEmail.from || '';
+                        this.training.subjectKeywords = '';
+                    }
+                },
+                
+                resetTraining() {
+                    this.trainingModalOpen = false;
+                    this.trainingStep = 0;
+                    this.trainingError = null;
+                    this.training = {
+                        fromPattern: '',
+                        subjectKeywords: '',
+                        primaryAction: 'file',
+                        folderTarget: 'Reports',
+                        forwardTo: '',
+                        ticketBoard: '1',
+                        hasCondition: false,
+                        conditionKeywords: '',
+                        exceptionAction: 'ticket'
+                    };
+                },
+                
+                canProceed() {
+                    if (this.trainingStep === 0) {
+                        return this.training.fromPattern.trim() !== '';
+                    }
+                    if (this.trainingStep === 1) {
+                        return this.training.primaryAction !== '';
+                    }
+                    if (this.trainingStep === 3) {
+                        return this.training.conditionKeywords.trim() !== '';
+                    }
+                    return true;
+                },
+                
+                nextStep() {
+                    if (!this.canProceed()) {
+                        this.trainingError = 'Please fill in required fields';
+                        return;
+                    }
+                    
+                    this.trainingError = null;
+                    
+                    if (this.trainingStep === 2 && !this.training.hasCondition) {
+                        this.trainingStep = 5;  // Skip Q3-Q4 if no condition
+                    } else if (this.trainingStep === 3) {
+                        this.trainingStep = 4;
+                    } else if (this.trainingStep === 4) {
+                        this.trainingStep = 5;
+                    } else {
+                        this.trainingStep++;
+                    }
+                },
+                
+                previousStep() {
+                    if (this.trainingStep === 5 && this.training.hasCondition) {
+                        this.trainingStep = 4;
+                    } else if (this.trainingStep === 4 && this.training.hasCondition) {
+                        this.trainingStep = 3;
+                    } else if (this.trainingStep === 4 && !this.training.hasCondition) {
+                        this.trainingStep = 2;
+                    } else if (this.trainingStep > 0) {
+                        this.trainingStep--;
+                    }
+                },
+                
+                async saveRule() {
+                    this.trainingSaving = true;
+                    this.trainingError = null;
+                    
+                    try {
+                        // Build condition_logic JSON
+                        let conditionLogic = null;
+                        if (this.training.hasCondition && this.training.conditionKeywords) {
+                            const keywords = this.training.conditionKeywords
+                                .split(',')
+                                .map(k => k.trim())
+                                .filter(k => k);
+                            
+                            conditionLogic = {
+                                type: 'keyword_match',
+                                field: 'body',
+                                keywords: keywords,
+                                match: 'any',
+                                case_sensitive: false
+                            };
+                        }
+                        
+                        // Build rule payload
+                        const payload = {
+                            name: `${this.training.fromPattern} - ${this.training.primaryAction}`,
+                            sender_pattern: this.training.fromPattern,
+                            subject_keywords: this.training.subjectKeywords || null,
+                            primary_action: this.training.primaryAction,
+                            folder_target: this.training.folderTarget || null,
+                            forward_to: this.training.forwardTo || null,
+                            ticket_board: this.training.ticketBoard ? parseInt(this.training.ticketBoard) : null,
+                            exception_action: this.training.exceptionAction || null,
+                            condition_logic: conditionLogic,
+                            status: 'pending'
+                        };
+                        
+                        // Save rule
+                        const res = await fetch('/api/rules/create', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        
+                        if (!res.ok) throw new Error(`Failed to create rule: ${res.status}`);
+                        
+                        const data = await res.json();
+                        
+                        // Success
+                        this.toast = { 
+                            visible: true, 
+                            message: `Rule saved as pending! ID: ${data.rule_id}` 
+                        };
+                        setTimeout(() => this.toast.visible = false, 5000);
+                        
+                        this.resetTraining();
+                    } catch (e) {
+                        this.trainingError = `Error: ${e.message}`;
+                    } finally {
+                        this.trainingSaving = false;
                     }
                 },
                 
