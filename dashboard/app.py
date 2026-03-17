@@ -45,6 +45,9 @@ from datetime import datetime
 from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
 
+# Import API blueprints
+from api.gmail import gmail_bp
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -58,6 +61,9 @@ app = Flask(__name__,
     static_folder='static'
 )
 CORS(app)
+
+# Register blueprints
+app.register_blueprint(gmail_bp)
 
 # Paths
 BASE_DIR = Path(__file__).parent.parent
